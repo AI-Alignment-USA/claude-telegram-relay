@@ -16,6 +16,10 @@ Deno.serve(async (req) => {
   try {
     const { record, table } = await req.json();
 
+    if (!["messages", "memory"].includes(table)) {
+      return new Response("Invalid table", { status: 400 });
+    }
+
     if (!record?.content || !record?.id) {
       return new Response("Missing record data", { status: 400 });
     }

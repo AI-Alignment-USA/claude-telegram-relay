@@ -123,6 +123,14 @@ if (!BOT_TOKEN) {
   process.exit(1);
 }
 
+if (!ALLOWED_USER_ID) {
+  console.error("TELEGRAM_USER_ID not set! Refusing to start without access control.");
+  console.log("\nTo set up:");
+  console.log("1. Message @userinfobot on Telegram to get your user ID");
+  console.log("2. Add TELEGRAM_USER_ID=your_id to .env");
+  process.exit(1);
+}
+
 // Create directories
 await mkdir(TEMP_DIR, { recursive: true });
 await mkdir(UPLOADS_DIR, { recursive: true });
@@ -362,8 +370,14 @@ bot.on("message:document", async (ctx) => {
   try {
     const file = await ctx.getFile();
     const timestamp = Date.now();
-    const fileName = doc.file_name || `file_${timestamp}`;
+    const rawName = doc.file_name || `file_${timestamp}`;
+    const fileName = rawName.replace(/[\/\\:*?"<>|\.\.]/g, "_");
     const filePath = join(UPLOADS_DIR, `${timestamp}_${fileName}`);
+    if (!filePath.startsWith(UPLOADS_DIR)) {
+      console.error(`Path traversal blocked: ${rawName}`);
+      await ctx.reply("Invalid filename.");
+      return;
+    }
 
     const response = await fetch(
       `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`

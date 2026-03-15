@@ -52,7 +52,7 @@ export async function processMemoryIntents(
       .from("memory")
       .select("id")
       .eq("type", "goal")
-      .ilike("content", `%${match[1]}%`)
+      .ilike("content", `%${match[1].replace(/[%_]/g, "\\$&")}%`)
       .limit(1);
 
     if (data?.[0]) {

@@ -22,6 +22,10 @@ Deno.serve(async (req) => {
       match_threshold = 0.7,
     } = await req.json();
 
+    if (!["messages", "memory"].includes(table)) {
+      return new Response("Invalid table", { status: 400 });
+    }
+
     if (!query) {
       return new Response("Missing query", { status: 400 });
     }
