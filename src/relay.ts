@@ -7,7 +7,7 @@
  * Run: bun run src/relay.ts
  */
 
-import { Bot, Context } from "grammy";
+import { Bot, Context, InlineKeyboard } from "grammy";
 import { spawn } from "bun";
 import { writeFile, mkdir, readFile, unlink } from "fs/promises";
 import { join, dirname } from "path";
@@ -18,6 +18,19 @@ import {
   getMemoryContext,
   getRelevantContext,
 } from "./memory.ts";
+import {
+  isAgentCommand,
+  isWorkflowCommand,
+  routeMessage,
+  getHelpText,
+} from "./agents/router.ts";
+import { getAgent } from "./agents/registry.ts";
+import { executeAgent } from "./agents/executor.ts";
+import { formatCostReport } from "./utils/cost.ts";
+import {
+  submitForApproval,
+  determineAutonomyTier,
+} from "./workflows/approval.ts";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.path));
 
@@ -246,6 +259,50 @@ async function callClaude(
 // MESSAGE HANDLERS
 // ============================================================
 
+// Callback queries (inline button responses for approvals)
+bot.on("callback_query:data", async (ctx) => {
+  const data = ctx.callbackQuery.data;
+  const [action, taskId] = data.split(":");
+
+  if (!taskId || !supabase) {
+    await ctx.answerCallbackQuery({ text: "Error: missing data" });
+    return;
+  }
+
+  if (action === "approve" || action === "reject") {
+    const status = action === "approve" ? "approved" : "rejected";
+
+    await supabase
+      .from("tasks")
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", taskId);
+
+    await supabase
+      .from("approvals")
+      .update({ status, resolved_at: new Date().toISOString() })
+      .eq("task_id", taskId);
+
+    await ctx.answerCallbackQuery({
+      text: action === "approve" ? "Approved!" : "Rejected.",
+    });
+
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await ctx.reply(`Task ${status}.`);
+  } else if (action === "changes") {
+    await supabase
+      .from("tasks")
+      .update({
+        status: "changes_requested",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", taskId);
+
+    await ctx.answerCallbackQuery({ text: "Send your feedback next." });
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await ctx.reply("What changes would you like? (Reply with your feedback)");
+  }
+});
+
 // Text messages
 bot.on("message:text", async (ctx) => {
   const text = ctx.message.text;
@@ -253,6 +310,78 @@ bot.on("message:text", async (ctx) => {
 
   await ctx.replyWithChatAction("typing");
 
+  // Handle /team or /agents help
+  if (text === "/team" || text === "/agents") {
+    await sendResponse(ctx, getHelpText());
+    return;
+  }
+
+  // Check if this is feedback for a "changes requested" task
+  if (supabase) {
+    const { data: pendingChanges } = await supabase
+      .from("tasks")
+      .select("id, agent_id, input, output")
+      .eq("status", "changes_requested")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (pendingChanges && pendingChanges.length > 0) {
+      const task = pendingChanges[0];
+      await ctx.replyWithChatAction("typing");
+
+      // Save user feedback
+      await supabase
+        .from("tasks")
+        .update({
+          user_feedback: text,
+          status: "in_progress",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", task.id);
+
+      // Re-run the agent with feedback
+      const agent = await getAgent(task.agent_id);
+      if (agent) {
+        const revisedPrompt =
+          `Revise your previous draft based on this feedback.\n\n` +
+          `Original request: ${task.input}\n\n` +
+          `Your previous draft:\n${task.output}\n\n` +
+          `Feedback from Crevita: ${text}\n\n` +
+          `Please produce a revised version addressing the feedback.`;
+
+        const result = await executeAgent(agent, revisedPrompt, {
+          supabase,
+          taskId: task.id,
+        });
+
+        // Re-submit for approval
+        await submitForApproval({
+          bot,
+          supabase,
+          agent,
+          taskId: task.id,
+          title: (task.input || "Revised draft").substring(0, 100),
+          output: result.response,
+          autonomyTier: 2,
+        });
+      }
+      return;
+    }
+  }
+
+  // Handle workflow commands (/status, /costs, /approve)
+  if (isWorkflowCommand(text)) {
+    await handleWorkflowCommand(ctx, text);
+    return;
+  }
+
+  // Handle agent commands (/coo, /cfo, /cmo, etc.)
+  if (isAgentCommand(text)) {
+    await handleAgentCommand(ctx, text);
+    return;
+  }
+
+  // Default: existing general assistant behavior
   await saveMessage("user", text);
 
   // Gather context: semantic search + facts/goals
@@ -270,6 +399,159 @@ bot.on("message:text", async (ctx) => {
   await saveMessage("assistant", response);
   await sendResponse(ctx, response);
 });
+
+// ============================================================
+// AGENT COMMAND HANDLER
+// ============================================================
+
+async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
+  const route = await routeMessage(text);
+  if (!route) {
+    await ctx.reply("Unknown agent. Send /team for available agents.");
+    return;
+  }
+
+  const { agent, message } = route;
+  const autonomyTier = determineAutonomyTier(agent, message);
+
+  await saveMessage("user", text, { agent_id: agent.id });
+
+  // Create task record
+  let taskId: string | undefined;
+  if (supabase) {
+    const { data } = await supabase
+      .from("tasks")
+      .insert({
+        agent_id: agent.id,
+        type: "interactive",
+        autonomy_tier: autonomyTier,
+        status: "in_progress",
+        title: message.substring(0, 100),
+        input: message,
+      })
+      .select("id")
+      .single();
+    taskId = data?.id;
+  }
+
+  // Execute with the agent's context and model
+  const result = await executeAgent(agent, message, {
+    supabase,
+    taskId,
+  });
+
+  // Route through approval pipeline based on tier
+  if (supabase && taskId && autonomyTier >= 2) {
+    const approval = await submitForApproval({
+      bot,
+      supabase,
+      agent,
+      taskId,
+      title: message.substring(0, 100),
+      output: result.response,
+      autonomyTier: autonomyTier as 1 | 2 | 3,
+    });
+
+    if (approval.handled) {
+      // Approval workflow sent its own Telegram messages
+      await saveMessage("assistant", result.response, { agent_id: agent.id });
+      return;
+    }
+  }
+
+  // Tier 1 or no Supabase: respond directly
+  if (supabase && taskId) {
+    await supabase
+      .from("tasks")
+      .update({
+        status: "completed",
+        output: result.response,
+        completed_at: new Date().toISOString(),
+        metadata: {
+          model: result.model,
+          input_tokens: result.inputTokens,
+          output_tokens: result.outputTokens,
+          cost_cents: result.costCents,
+        },
+      })
+      .eq("id", taskId);
+  }
+
+  await saveMessage("assistant", result.response, { agent_id: agent.id });
+
+  const header = `*[${agent.name}]*\n\n`;
+  await sendResponse(ctx, header + result.response);
+}
+
+// ============================================================
+// WORKFLOW COMMAND HANDLER
+// ============================================================
+
+async function handleWorkflowCommand(
+  ctx: Context,
+  text: string
+): Promise<void> {
+  const cmd = text.split(" ")[0].toLowerCase();
+
+  if (cmd === "/status") {
+    if (!supabase) {
+      await ctx.reply("Supabase not configured.");
+      return;
+    }
+    const { data: tasks } = await supabase
+      .from("tasks")
+      .select("agent_id, status, title, created_at")
+      .in("status", ["pending", "in_progress", "awaiting_coo", "awaiting_approval"])
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (!tasks || tasks.length === 0) {
+      await ctx.reply("No active tasks.");
+      return;
+    }
+
+    const lines = tasks.map(
+      (t: any) => `  [${t.status}] ${t.agent_id}: ${t.title}`
+    );
+    await sendResponse(ctx, `*Active Tasks*\n\n${lines.join("\n")}`);
+  } else if (cmd === "/costs") {
+    if (!supabase) {
+      await ctx.reply("Supabase not configured.");
+      return;
+    }
+    const { data } = await supabase.rpc("get_daily_costs");
+    const report = formatCostReport(data || []);
+    await sendResponse(ctx, `*Today's Costs*\n\n${report}`);
+  } else if (cmd === "/approve") {
+    if (!supabase) {
+      await ctx.reply("Supabase not configured.");
+      return;
+    }
+    const { data } = await supabase.rpc("get_pending_approvals");
+    if (!data || data.length === 0) {
+      await ctx.reply("No pending approvals.");
+      return;
+    }
+    for (const item of data) {
+      const { data: task } = await supabase
+        .from("tasks")
+        .select("output, coo_review")
+        .eq("id", item.task_id)
+        .single();
+
+      const keyboard = new InlineKeyboard()
+        .text("Approve", `approve:${item.task_id}`)
+        .text("Reject", `reject:${item.task_id}`)
+        .text("Changes", `changes:${item.task_id}`);
+
+      let msg = `*[${item.agent_name}] ${item.title}*\n\n`;
+      if (task?.coo_review) msg += `COO Review: ${task.coo_review}\n\n`;
+      if (task?.output) msg += task.output.substring(0, 3000);
+
+      await ctx.reply(msg, { reply_markup: keyboard, parse_mode: "Markdown" });
+    }
+  }
+}
 
 // Voice messages
 bot.on("message:voice", async (ctx) => {

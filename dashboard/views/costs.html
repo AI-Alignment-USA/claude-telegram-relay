@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Costs - Command Center</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <div class="nav-links">
+      <a href="/">Overview</a>
+      <a href="/approvals">Approvals</a>
+      <a href="/costs" class="active">Costs</a>
+      <a href="/newsroom">News Room</a>
+    </div>
+  </nav>
+
+  <main>
+    <h1>Cost Dashboard</h1>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value">${{dailyTotal}}</div>
+        <div class="stat-label">Today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${{weeklyTotal}}</div>
+        <div class="stat-label">This Week</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">$5.00</div>
+        <div class="stat-label">Daily Limit</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">$10.00</div>
+        <div class="stat-label">Weekly Limit</div>
+      </div>
+    </div>
+
+    <h2>Daily Cost by Agent</h2>
+    <div class="chart-container">
+      <canvas id="daily-chart" height="250"></canvas>
+    </div>
+
+    <h2>Weekly Cost by Agent</h2>
+    <table class="data-table">
+      <thead>
+        <tr><th>Agent</th><th>Calls</th><th>Cost</th></tr>
+      </thead>
+      <tbody id="weekly-body"></tbody>
+    </table>
+
+    <h2>7-Day Spend Trend</h2>
+    <div class="chart-container">
+      <canvas id="trend-chart" height="250"></canvas>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script>
+    const dailyCosts = {{dailyCosts}};
+    const weeklyCosts = {{weeklyCosts}};
+    const costHistory = {{costHistory}};
+
+    const colors = ['#6366f1','#8b5cf6','#a78bfa','#c4b5fd','#818cf8','#a5b4fc','#c7d2fe','#e0e7ff'];
+
+    // Daily bar chart
+    if (dailyCosts.length > 0) {
+      new Chart(document.getElementById('daily-chart'), {
+        type: 'bar',
+        data: {
+          labels: dailyCosts.map(c => c.agent_name),
+          datasets: [{
+            label: 'Cost ($)',
+            data: dailyCosts.map(c => Number(c.total_cents) / 100),
+            backgroundColor: colors,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { callback: v => '$' + v.toFixed(2), color: '#94a3b8' }, grid: { color: '#1e293b' } },
+            x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    // Weekly table
+    const weeklyBody = document.getElementById('weekly-body');
+    let weekTotal = 0;
+    weeklyCosts.forEach(c => {
+      const cost = Number(c.total_cents) / 100;
+      weekTotal += cost;
+      weeklyBody.innerHTML += `<tr><td>${c.agent_name}</td><td>${c.call_count}</td><td>$${cost.toFixed(2)}</td></tr>`;
+    });
+    weeklyBody.innerHTML += `<tr class="total-row"><td><strong>Total</strong></td><td></td><td><strong>$${weekTotal.toFixed(2)}</strong></td></tr>`;
+
+    // 7-day trend line chart
+    if (costHistory.length > 0) {
+      // Group by date
+      const byDate = {};
+      costHistory.forEach(c => {
+        const date = c.created_at.split('T')[0];
+        if (!byDate[date]) byDate[date] = {};
+        const agentId = c.agent_id;
+        if (!byDate[date][agentId]) byDate[date][agentId] = 0;
+        byDate[date][agentId] += Number(c.estimated_cost_cents) / 100;
+      });
+
+      const dates = Object.keys(byDate).sort();
+      const agentIds = [...new Set(costHistory.map(c => c.agent_id))];
+
+      const datasets = agentIds.map((id, i) => ({
+        label: id,
+        data: dates.map(d => byDate[d]?.[id] || 0),
+        borderColor: colors[i % colors.length],
+        backgroundColor: colors[i % colors.length] + '33',
+        fill: true,
+        tension: 0.3,
+      }));
+
+      new Chart(document.getElementById('trend-chart'), {
+        type: 'line',
+        data: { labels: dates.map(d => d.slice(5)), datasets },
+        options: {
+          responsive: true,
+          plugins: { legend: { labels: { color: '#94a3b8' } } },
+          scales: {
+            y: { stacked: true, beginAtZero: true, ticks: { callback: v => '$' + v.toFixed(2), color: '#94a3b8' }, grid: { color: '#1e293b' } },
+            x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>

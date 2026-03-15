@@ -23,6 +23,7 @@ Run through this list every week to keep your bot secure.
 - [ ] **Check Supabase logs:** Dashboard > Logs for any unauthorized access attempts
 - [ ] **Review Edge Function invocations:** Dashboard > Edge Functions for unexpected call patterns
 - [ ] **Verify BitLocker:** Run `manage-bde -status` in an admin PowerShell to confirm disk encryption
+- [ ] **Antivirus active:** Confirm McAfee (or another AV) has real-time protection enabled
 
 ## After Any Code Change
 
@@ -44,5 +45,5 @@ Run through this list every week to keep your bot secure.
 - [ ] BitLocker is enabled on your Windows 11 machine
 - [ ] `.env` is excluded from OneDrive / cloud sync
 - [ ] Your WiFi network uses WPA3 or WPA2 with a strong password
-- [ ] Windows Defender is active and up to date
+- [ ] Antivirus (McAfee or other) is active with real-time protection
 - [ ] Your Supabase project is not shared with other users

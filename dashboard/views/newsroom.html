@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>News Room - Command Center</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <div class="nav-links">
+      <a href="/">Overview</a>
+      <a href="/approvals">Approvals</a>
+      <a href="/costs">Costs</a>
+      <a href="/newsroom" class="active">News Room</a>
+    </div>
+  </nav>
+
+  <main>
+    <h1>AI News Room</h1>
+
+    <div class="filter-bar">
+      <a href="/newsroom" class="filter-btn {{activeCategory === 'all' ? 'active' : ''}}">All</a>
+      <a href="/newsroom?category=direct_impact" class="filter-btn">Direct Impact</a>
+      <a href="/newsroom?category=industry_trends" class="filter-btn">Industry</a>
+      <a href="/newsroom?category=research" class="filter-btn">Research</a>
+      <a href="/newsroom?category=policy" class="filter-btn">Policy</a>
+      <a href="/newsroom?category=breaking" class="filter-btn">Breaking</a>
+    </div>
+
+    <p class="muted">{{newsCount}} items</p>
+
+    <div id="news-feed"></div>
+
+    <div id="empty-state" style="display:none" class="empty-state">
+      <p>No news items yet. The News Room agent will populate this in Phase 6.</p>
+      <p>News collection runs every 2 hours, with daily digests at 7:30am and weekly deep dives on Saturdays at 9am.</p>
+    </div>
+  </main>
+
+  <script>
+    const news = {{news}};
+
+    const feed = document.getElementById('news-feed');
+    const empty = document.getElementById('empty-state');
+
+    if (news.length === 0) {
+      empty.style.display = 'block';
+    } else {
+      news.forEach(item => {
+        const time = new Date(item.created_at).toLocaleString('en-US', {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+        const catClass = 'cat-' + item.category;
+        const importance = item.importance >= 8 ? '<span class="breaking-badge">BREAKING</span>' : '';
+
+        feed.innerHTML += `
+          <div class="news-card ${catClass}">
+            <div class="news-header">
+              <span class="news-category">${item.category.replace('_', ' ')}</span>
+              ${importance}
+              <span class="news-time">${time}</span>
+            </div>
+            <h3>${escHtml(item.title)}</h3>
+            ${item.summary ? `<p>${escHtml(item.summary)}</p>` : ''}
+            ${item.source_url ? `<a href="${item.source_url}" target="_blank" class="news-source">${item.source_name || 'Source'}</a>` : ''}
+          </div>`;
+      });
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+  </script>
+</body>
+</html>

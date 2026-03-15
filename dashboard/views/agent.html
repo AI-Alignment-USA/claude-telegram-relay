@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{agentName}} - Command Center</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <div class="nav-links">
+      <a href="/">Overview</a>
+      <a href="/approvals">Approvals</a>
+      <a href="/costs">Costs</a>
+      <a href="/newsroom">News Room</a>
+    </div>
+  </nav>
+
+  <main>
+    <div class="page-header">
+      <h1>{{agentName}}</h1>
+      <p class="subtitle">{{agentRole}} &middot; Model: <span class="model-badge">{{agentModel}}</span> &middot; Total Cost: ${{totalCost}}</p>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value">{{taskCount}}</div>
+        <div class="stat-label">Total Tasks</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${{totalCost}}</div>
+        <div class="stat-label">Total Cost</div>
+      </div>
+    </div>
+
+    <h2>Tasks</h2>
+    <table class="data-table">
+      <thead>
+        <tr><th>Title</th><th>Status</th><th>Tier</th><th>Created</th></tr>
+      </thead>
+      <tbody id="tasks-body"></tbody>
+    </table>
+
+    <h2>Task Details</h2>
+    <div id="task-detail" class="detail-panel">
+      <p class="muted">Click a task above to view details.</p>
+    </div>
+  </main>
+
+  <script>
+    const tasks = {{tasks}};
+    const costs = {{costs}};
+
+    const tbody = document.getElementById('tasks-body');
+    tasks.forEach(t => {
+      const time = new Date(t.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const statusClass = t.status === 'completed' ? 'status-done' :
+        t.status.includes('await') ? 'status-pending' : 'status-active';
+      const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      tr.onclick = () => showDetail(t);
+      tr.innerHTML = `
+        <td>${t.title || '-'}</td>
+        <td><span class="status ${statusClass}">${t.status}</span></td>
+        <td>Tier ${t.autonomy_tier}</td>
+        <td>${time}</td>`;
+      tbody.appendChild(tr);
+    });
+
+    function showDetail(t) {
+      const panel = document.getElementById('task-detail');
+      let html = `<h3>${t.title}</h3>`;
+      html += `<p><strong>Status:</strong> ${t.status} &middot; <strong>Tier:</strong> ${t.autonomy_tier}</p>`;
+      if (t.input) html += `<div class="detail-section"><strong>Input:</strong><pre>${escHtml(t.input)}</pre></div>`;
+      if (t.output) html += `<div class="detail-section"><strong>Output:</strong><pre>${escHtml(t.output.substring(0, 2000))}</pre></div>`;
+      if (t.coo_review) html += `<div class="detail-section"><strong>COO Review:</strong><pre>${escHtml(t.coo_review)}</pre></div>`;
+      if (t.user_feedback) html += `<div class="detail-section"><strong>User Feedback:</strong><pre>${escHtml(t.user_feedback)}</pre></div>`;
+      panel.innerHTML = html;
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+  </script>
+</body>
+</html>

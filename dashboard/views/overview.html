@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tamille Command Center</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <div class="nav-links">
+      <a href="/" class="active">Overview</a>
+      <a href="/approvals">Approvals <span class="badge" id="approval-badge">{{pendingCount}}</span></a>
+      <a href="/costs">Costs</a>
+      <a href="/newsroom">News Room</a>
+    </div>
+  </nav>
+
+  <main>
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value">${{totalCostToday}}</div>
+        <div class="stat-label">Cost Today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{taskCount}}</div>
+        <div class="stat-label">Tasks Today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{completedCount}}</div>
+        <div class="stat-label">Completed</div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-value">{{pendingCount}}</div>
+        <div class="stat-label">Pending Approval</div>
+      </div>
+    </div>
+
+    <h2>Executive Team</h2>
+    <div class="agent-grid" id="agent-grid"></div>
+
+    <h2>Recent Tasks</h2>
+    <table class="data-table" id="tasks-table">
+      <thead>
+        <tr><th>Agent</th><th>Task</th><th>Status</th><th>Time</th></tr>
+      </thead>
+      <tbody id="tasks-body"></tbody>
+    </table>
+
+    <h2>Cost Breakdown Today</h2>
+    <div class="chart-container">
+      <canvas id="cost-chart" height="200"></canvas>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script>
+    const agents = {{agents}};
+    const dailyCosts = {{dailyCosts}};
+    const recentTasks = {{recentTasks}};
+
+    // Agent grid
+    const grid = document.getElementById('agent-grid');
+    agents.forEach(a => {
+      const cost = dailyCosts.find(c => c.agent_id === a.id);
+      const costStr = cost ? '$' + (Number(cost.total_cents) / 100).toFixed(2) : '$0.00';
+      grid.innerHTML += `
+        <a href="/agent/${a.id}" class="agent-card">
+          <div class="agent-name">${a.name}</div>
+          <div class="agent-role">${a.role}</div>
+          <div class="agent-meta">
+            <span class="model-badge">${a.model_default}</span>
+            <span class="cost-badge">${costStr}</span>
+          </div>
+        </a>`;
+    });
+
+    // Tasks table
+    const tbody = document.getElementById('tasks-body');
+    recentTasks.forEach(t => {
+      const time = new Date(t.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const statusClass = t.status === 'completed' ? 'status-done' :
+        t.status.includes('await') ? 'status-pending' : 'status-active';
+      tbody.innerHTML += `
+        <tr>
+          <td>${t.agent_id}</td>
+          <td>${t.title || '-'}</td>
+          <td><span class="status ${statusClass}">${t.status}</span></td>
+          <td>${time}</td>
+        </tr>`;
+    });
+
+    // Cost chart
+    if (dailyCosts.length > 0) {
+      new Chart(document.getElementById('cost-chart'), {
+        type: 'bar',
+        data: {
+          labels: dailyCosts.map(c => c.agent_name),
+          datasets: [{
+            label: 'Cost ($)',
+            data: dailyCosts.map(c => Number(c.total_cents) / 100),
+            backgroundColor: ['#6366f1','#8b5cf6','#a78bfa','#c4b5fd','#818cf8','#a5b4fc','#c7d2fe','#e0e7ff'],
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { callback: v => '$' + v.toFixed(2), color: '#94a3b8' }, grid: { color: '#1e293b' } },
+            x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>

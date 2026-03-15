@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Approval Queue - Command Center</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <div class="nav-links">
+      <a href="/">Overview</a>
+      <a href="/approvals" class="active">Approvals <span class="badge">{{pendingCount}}</span></a>
+      <a href="/costs">Costs</a>
+      <a href="/newsroom">News Room</a>
+    </div>
+  </nav>
+
+  <main>
+    <h1>Approval Queue</h1>
+
+    <h2>Pending ({{pendingCount}})</h2>
+    <div id="pending-list"></div>
+
+    <h2>Recent Decisions</h2>
+    <table class="data-table">
+      <thead>
+        <tr><th>Agent</th><th>Task</th><th>Decision</th><th>Time</th></tr>
+      </thead>
+      <tbody id="recent-body"></tbody>
+    </table>
+  </main>
+
+  <script>
+    const pending = {{pending}};
+    const recent = {{recent}};
+
+    const pendingList = document.getElementById('pending-list');
+    if (pending.length === 0) {
+      pendingList.innerHTML = '<p class="muted">No items awaiting approval.</p>';
+    } else {
+      pending.forEach(t => {
+        const agentName = t.agents?.name || t.agent_id;
+        const card = document.createElement('div');
+        card.className = 'approval-card';
+        card.innerHTML = `
+          <div class="approval-header">
+            <span class="agent-tag">${agentName}</span>
+            <span class="status status-pending">${t.status}</span>
+          </div>
+          <h3>${t.title}</h3>
+          ${t.coo_review ? `<div class="coo-review"><strong>Tamille's Review:</strong> ${escHtml(t.coo_review)}</div>` : ''}
+          ${t.output ? `<pre class="approval-content">${escHtml(t.output.substring(0, 1500))}</pre>` : ''}
+          <div class="approval-actions" id="actions-${t.id}">
+            <button class="btn btn-approve" onclick="decide('${t.id}', 'approved')">Approve</button>
+            <button class="btn btn-reject" onclick="decide('${t.id}', 'rejected')">Reject</button>
+          </div>`;
+        pendingList.appendChild(card);
+      });
+    }
+
+    const recentBody = document.getElementById('recent-body');
+    recent.forEach(t => {
+      const agentName = t.agents?.name || t.agent_id;
+      const time = new Date(t.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const statusClass = t.status === 'approved' ? 'status-done' : t.status === 'rejected' ? 'status-rejected' : 'status-pending';
+      recentBody.innerHTML += `
+        <tr>
+          <td>${agentName}</td>
+          <td>${t.title}</td>
+          <td><span class="status ${statusClass}">${t.status}</span></td>
+          <td>${time}</td>
+        </tr>`;
+    });
+
+    async function decide(taskId, action) {
+      const res = await fetch('/api/approve/' + taskId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+      if (res.ok) {
+        document.getElementById('actions-' + taskId).innerHTML =
+          `<span class="status ${action === 'approved' ? 'status-done' : 'status-rejected'}">${action}</span>`;
+      }
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+  </script>
+</body>
+</html>
