@@ -9,6 +9,11 @@
 import { createClient } from "@supabase/supabase-js";
 import { sendTelegram } from "../utils/telegram.ts";
 import { guardTiming } from "../utils/timing-guard.ts";
+import {
+  isConfigured as calendarConfigured,
+  getTodayEvents,
+  formatEvents,
+} from "../utils/calendar.ts";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
@@ -117,9 +122,19 @@ async function main() {
   guardTiming("household-reminders", { earliest: "7:45", latest: "8:15" });
   const calendarReminders = getTodayReminders();
   const deadlineReminders = await getMemoryReminders();
+
+  // Fetch Google Calendar events for scheduling context
+  let calendarEvents: string | null = null;
+  if (calendarConfigured()) {
+    const events = await getTodayEvents();
+    if (events && events.length > 0) {
+      calendarEvents = formatEvents(events);
+    }
+  }
+
   const allReminders = [...calendarReminders, ...deadlineReminders];
 
-  if (allReminders.length === 0) {
+  if (allReminders.length === 0 && !calendarEvents) {
     console.log("No reminders for today. Skipping.");
     return;
   }
@@ -132,15 +147,21 @@ async function main() {
     timeZone: "America/Los_Angeles",
   });
 
-  const message = [
+  const sections = [
     `*[Household] Daily Reminders*`,
     dateStr,
-    ``,
-    ...allReminders.map((r) => `- ${r}`),
-  ].join("\n");
+  ];
+
+  if (calendarEvents) {
+    sections.push(``, `*Today's Calendar*`, calendarEvents);
+  }
+
+  if (allReminders.length > 0) {
+    sections.push(``, `*Reminders*`, ...allReminders.map((r) => `- ${r}`));
+  }
 
   console.log("Sending household reminders...");
-  await sendTelegram(message, { parseMode: "Markdown" });
+  await sendTelegram(sections.join("\n"), { parseMode: "Markdown" });
   console.log("Reminders sent.");
 }
 

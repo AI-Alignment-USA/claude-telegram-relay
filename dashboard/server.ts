@@ -413,9 +413,9 @@ app.get("/health", async (c) => {
   // Integration status
   const integrations: Record<string, string> = {};
 
-  // Google Calendar
-  const { isConfigured: calConfigured } = await import("../src/utils/calendar.ts");
-  integrations.googleCalendar = calConfigured() ? "configured" : "not configured";
+  // Google Calendar (live API check)
+  const { checkStatus: calCheck } = await import("../src/utils/calendar.ts");
+  integrations.googleCalendar = await calCheck();
 
   // Mailchimp
   const { isConfigured: mcConfigured } = await import("../src/utils/mailchimp.ts");

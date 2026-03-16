@@ -13,6 +13,7 @@ import { sendTelegram } from "../utils/telegram.ts";
 import { formatCostReport } from "../utils/cost.ts";
 import {
   getTodayEvents,
+  getUpcomingEvents,
   formatEvents,
   isConfigured as calendarConfigured,
 } from "../utils/calendar.ts";
@@ -336,6 +337,38 @@ async function eodSummary(): Promise<void> {
     6: "Weekend",
   };
   sections.push(``, `*Tomorrow Preview*`, tomorrowSchedules[tomorrowDay] || "No schedule");
+
+  // Tomorrow's calendar events
+  if (calendarConfigured()) {
+    const tomorrowStart = new Date(
+      tomorrow.toLocaleString("en-US", { timeZone: "America/Los_Angeles" })
+    );
+    tomorrowStart.setHours(0, 0, 0, 0);
+    const tomorrowEnd = new Date(tomorrowStart);
+    tomorrowEnd.setHours(23, 59, 59, 999);
+
+    const upcoming = await getUpcomingEvents(2);
+    if (upcoming && upcoming.length > 0) {
+      const tomorrowDateStr = tomorrow.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        timeZone: "America/Los_Angeles",
+      });
+      const tomorrowEvents = upcoming.filter((e) => {
+        const eventDate = new Date(e.startTime).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          timeZone: "America/Los_Angeles",
+        });
+        return eventDate === tomorrowDateStr;
+      });
+      if (tomorrowEvents.length > 0) {
+        sections.push(formatEvents(tomorrowEvents));
+      }
+    }
+  }
 
   sections.push(``, `---`, `_Good night, Crevita._`);
 
