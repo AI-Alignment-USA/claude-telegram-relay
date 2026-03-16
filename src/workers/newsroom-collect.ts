@@ -12,6 +12,7 @@ import { XMLParser } from "fast-xml-parser";
 import { createClient } from "@supabase/supabase-js";
 import { spawnSync } from "bun";
 import { sendTelegram } from "../utils/telegram.ts";
+import { guardTiming } from "../utils/timing-guard.ts";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
@@ -199,6 +200,7 @@ async function main() {
     process.exit(1);
   }
 
+  guardTiming("newsroom-collect", { earliest: "6:45", latest: "21:15" });
   console.log("News Room: collecting from RSS feeds...");
 
   // Fetch all feeds in parallel

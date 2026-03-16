@@ -16,6 +16,7 @@ import {
   formatEvents,
   isConfigured as calendarConfigured,
 } from "../utils/calendar.ts";
+import { guardTiming } from "../utils/timing-guard.ts";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
@@ -354,10 +355,12 @@ async function main() {
   const mode = process.argv[2] || "morning";
 
   if (mode === "eod") {
+    guardTiming("coo-eod", { earliest: "19:45", latest: "20:15" });
     console.log("Building EOD summary...");
     await eodSummary();
     console.log("EOD summary sent.");
   } else {
+    guardTiming("coo-morning", { earliest: "8:45", latest: "9:15" });
     console.log("Building morning briefing...");
     await morningBriefing();
     console.log("Morning briefing sent.");

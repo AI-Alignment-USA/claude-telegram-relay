@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { sendTelegram, stripEmDashes } from "../utils/telegram.ts";
 import { getAgent, getAgentIds } from "../agents/registry.ts";
 import { executeAgent } from "../agents/executor.ts";
+import { guardTiming } from "../utils/timing-guard.ts";
 import { readFile } from "fs/promises";
 import { join, dirname } from "path";
 
@@ -351,12 +352,15 @@ async function main() {
 
   switch (mode) {
     case "patrol":
+      guardTiming("ciso-patrol", { earliest: "22:45", latest: "23:15" });
       await nightlyPatrol();
       break;
     case "brief":
+      guardTiming("ciso-brief", { earliest: "6:15", latest: "6:45" });
       await morningBrief();
       break;
     case "weekly":
+      guardTiming("ciso-weekly", { days: [1], earliest: "6:15", latest: "6:45" });
       await weeklyReport();
       break;
     default:

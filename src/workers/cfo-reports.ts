@@ -10,6 +10,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { sendTelegram } from "../utils/telegram.ts";
 import { formatCostReport } from "../utils/cost.ts";
+import { guardTiming } from "../utils/timing-guard.ts";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
@@ -155,10 +156,12 @@ async function main() {
   const mode = process.argv[2] || "daily";
 
   if (mode === "weekly") {
+    guardTiming("cfo-weekly", { days: [0], earliest: "18:45", latest: "19:15" });
     console.log("Building weekly financial report...");
     await weeklyReport();
     console.log("Weekly report sent.");
   } else {
+    guardTiming("cfo-daily", { earliest: "7:45", latest: "8:15" });
     console.log("Building daily sales report...");
     await dailyReport();
     console.log("Daily report sent.");

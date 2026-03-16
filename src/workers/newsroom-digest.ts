@@ -10,6 +10,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { spawnSync } from "bun";
 import { sendTelegram } from "../utils/telegram.ts";
+import { guardTiming } from "../utils/timing-guard.ts";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
@@ -216,9 +217,11 @@ async function main() {
   const mode = process.argv[2] || "daily";
 
   if (mode === "weekly") {
+    guardTiming("newsroom-weekly", { days: [6], earliest: "8:45", latest: "9:15" });
     console.log("Building weekly deep dive...");
     await weeklyDeepDive();
   } else {
+    guardTiming("newsroom-daily", { earliest: "7:15", latest: "7:45" });
     console.log("Building daily digest...");
     await dailyDigest();
   }

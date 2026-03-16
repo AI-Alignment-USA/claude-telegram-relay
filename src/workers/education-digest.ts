@@ -9,6 +9,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { sendTelegram } from "../utils/telegram.ts";
+import { guardTiming } from "../utils/timing-guard.ts";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
@@ -132,6 +133,7 @@ async function main() {
     process.exit(1);
   }
 
+  guardTiming("education-digest", { days: [0], earliest: "18:45", latest: "19:15" });
   console.log("Building education digest...");
   await buildDigest();
   console.log("Education digest sent.");

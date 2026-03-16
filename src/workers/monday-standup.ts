@@ -12,6 +12,7 @@ import { createClient } from "@supabase/supabase-js";
 import { sendTelegram, stripEmDashes } from "../utils/telegram.ts";
 import { getAgent, getAgentIds, selectModel } from "../agents/registry.ts";
 import { executeAgent } from "../agents/executor.ts";
+import { guardTiming } from "../utils/timing-guard.ts";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
@@ -83,6 +84,7 @@ async function main() {
     process.exit(1);
   }
 
+  guardTiming("monday-standup", { days: [1], earliest: "9:15", latest: "9:45" });
   console.log("Starting Monday standup...");
 
   // Create meeting record
