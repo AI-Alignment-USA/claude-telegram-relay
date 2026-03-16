@@ -11,60 +11,21 @@ import { createClient } from "@supabase/supabase-js";
 import { sendTelegram } from "../utils/telegram.ts";
 import { formatCostReport } from "../utils/cost.ts";
 import { guardTiming } from "../utils/timing-guard.ts";
+import {
+  isConfigured as gumroadConfigured,
+  getSales,
+  getProducts,
+  formatSalesReport,
+  formatProductPerformance,
+} from "../utils/gumroad.ts";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
-const GUMROAD_TOKEN = process.env.GUMROAD_ACCESS_TOKEN || "";
 
 const supabase =
   SUPABASE_URL && SUPABASE_ANON_KEY
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
-
-// ============================================================
-// GUMROAD
-// ============================================================
-
-interface SalesData {
-  count: number;
-  revenue: number;
-  products: Record<string, { count: number; revenue: number }>;
-}
-
-async function getGumroadSales(daysBack: number = 1): Promise<SalesData | null> {
-  if (!GUMROAD_TOKEN) return null;
-
-  try {
-    const after = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split("T")[0];
-
-    const res = await fetch(
-      `https://api.gumroad.com/v2/sales?access_token=${GUMROAD_TOKEN}&after=${after}`
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data.success) return null;
-
-    const sales = data.sales || [];
-    const products: Record<string, { count: number; revenue: number }> = {};
-
-    for (const sale of sales) {
-      const name = sale.product_name || "Unknown";
-      if (!products[name]) products[name] = { count: 0, revenue: 0 };
-      products[name].count++;
-      products[name].revenue += sale.price / 100;
-    }
-
-    return {
-      count: sales.length,
-      revenue: sales.reduce((sum: number, s: any) => sum + s.price / 100, 0),
-      products,
-    };
-  } catch {
-    return null;
-  }
-}
 
 // ============================================================
 // REPORTS
@@ -74,16 +35,14 @@ async function dailyReport(): Promise<void> {
   const sections = [`*[CFO] Daily Sales Report*`, ``];
 
   // Gumroad sales
-  const sales = await getGumroadSales(1);
-  if (sales === null) {
+  if (!gumroadConfigured()) {
     sections.push(`*Gumroad*`, `Not configured (add GUMROAD_ACCESS_TOKEN to .env)`);
-  } else if (sales.count === 0) {
-    sections.push(`*Gumroad*`, `No sales today yet.`);
   } else {
-    sections.push(`*Gumroad*`);
-    sections.push(`${sales.count} sale(s), $${sales.revenue.toFixed(2)} revenue`);
-    for (const [name, data] of Object.entries(sales.products)) {
-      sections.push(`  - ${name}: ${data.count} sale(s), $${data.revenue.toFixed(2)}`);
+    const sales = await getSales(1);
+    if (sales === null) {
+      sections.push(`*Gumroad*`, `API error; check token.`);
+    } else {
+      sections.push(formatSalesReport(sales, "Gumroad (Today)"));
     }
   }
 
@@ -105,17 +64,22 @@ async function weeklyReport(): Promise<void> {
   const sections = [`*[CFO] Weekly Financial Report*`, ``];
 
   // Weekly Gumroad sales
-  const sales = await getGumroadSales(7);
-  if (sales === null) {
+  let weeklyRevenue = 0;
+  if (!gumroadConfigured()) {
     sections.push(`*Gumroad (7 days)*`, `Not configured`);
   } else {
-    sections.push(`*Gumroad Revenue (7 days)*`);
-    sections.push(`${sales.count} sale(s), $${sales.revenue.toFixed(2)} total`);
-    if (Object.keys(sales.products).length > 0) {
-      sections.push(`By product:`);
-      for (const [name, data] of Object.entries(sales.products)) {
-        sections.push(`  - ${name}: ${data.count} sale(s), $${data.revenue.toFixed(2)}`);
-      }
+    const sales = await getSales(7);
+    if (sales === null) {
+      sections.push(`*Gumroad (7 days)*`, `API error; check token.`);
+    } else {
+      weeklyRevenue = sales.revenue;
+      sections.push(formatSalesReport(sales, "Gumroad Revenue (7 days)"));
+    }
+
+    // Product performance (lifetime stats)
+    const products = await getProducts();
+    if (products.length > 0) {
+      sections.push(``, formatProductPerformance(products));
     }
   }
 
@@ -131,10 +95,9 @@ async function weeklyReport(): Promise<void> {
         (sum: number, r: any) => sum + Number(r.total_cents),
         0
       );
-      const revenue = sales?.revenue || 0;
-      const net = revenue - totalCostCents / 100;
+      const net = weeklyRevenue - totalCostCents / 100;
       sections.push(``, `*Net*`);
-      sections.push(`Revenue: $${revenue.toFixed(2)}`);
+      sections.push(`Revenue: $${weeklyRevenue.toFixed(2)}`);
       sections.push(`Agent costs: $${(totalCostCents / 100).toFixed(2)}`);
       sections.push(`Net: $${net.toFixed(2)}`);
     }

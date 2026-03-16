@@ -421,8 +421,9 @@ app.get("/health", async (c) => {
   const { isConfigured: mcConfigured } = await import("../src/utils/mailchimp.ts");
   integrations.mailchimp = mcConfigured() ? "configured" : "not configured";
 
-  // Gumroad
-  integrations.gumroad = process.env.GUMROAD_ACCESS_TOKEN ? "configured" : "not configured";
+  // Gumroad (live API check)
+  const { checkStatus: gumroadCheck } = await import("../src/utils/gumroad.ts");
+  integrations.gumroad = await gumroadCheck();
 
   return c.json({
     status: "ok",
