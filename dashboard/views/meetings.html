@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meetings - Tamille Command Center</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <div class="nav-links">
+      <a href="/">Overview</a>
+      <a href="/approvals">Approvals</a>
+      <a href="/costs">Costs</a>
+      <a href="/meetings" class="active">Meetings</a>
+      <a href="/newsroom">News Room</a>
+      <a href="/security">Security</a>
+    </div>
+  </nav>
+
+  <main>
+    <h1>Executive Meetings</h1>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value">{{totalMeetings}}</div>
+        <div class="stat-label">Total Meetings</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{standupCount}}</div>
+        <div class="stat-label">Standups</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{adhocCount}}</div>
+        <div class="stat-label">Ad Hoc</div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-value">${{totalCost}}</div>
+        <div class="stat-label">Total Cost</div>
+      </div>
+    </div>
+
+    <h2>Recent Meetings</h2>
+    <div id="meetings-list"></div>
+
+    <div id="meeting-detail" class="detail-panel" style="display:none; margin-top: 2rem;">
+      <h2 id="detail-title"></h2>
+      <div class="stats-row" id="detail-stats"></div>
+      <div id="detail-synthesis" class="detail-section"></div>
+      <h2>Discussion Transcript</h2>
+      <div id="detail-transcript"></div>
+    </div>
+  </main>
+
+  <script>
+    const meetings = {{meetings}};
+
+    const list = document.getElementById('meetings-list');
+
+    if (meetings.length === 0) {
+      list.innerHTML = '<div class="empty-state">No meetings yet. Use /meeting [topic] on Telegram or wait for Monday standup.</div>';
+    }
+
+    meetings.forEach(m => {
+      const time = new Date(m.created_at).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+      const typeLabel = m.type === 'standup' ? 'STANDUP' : 'AD HOC';
+      const tierLabel = m.autonomy_tier === 1 ? 'Autonomous' : 'Approval Required';
+      const statusClass = m.status === 'completed' ? 'status-done' :
+        m.status === 'in_progress' ? 'status-active' : 'status-rejected';
+      const cost = m.metadata?.total_cost_cents
+        ? '$' + (m.metadata.total_cost_cents / 100).toFixed(2) : '-';
+
+      list.innerHTML += `
+        <div class="news-card" style="cursor:pointer" onclick="showDetail('${m.id}')">
+          <div class="news-header">
+            <span class="news-category">${typeLabel}</span>
+            <span class="status ${statusClass}">${m.status}</span>
+            <span class="muted" style="margin-left: 0.5rem">${tierLabel}</span>
+            <span class="news-time">${time}</span>
+          </div>
+          <h3>${m.topic}</h3>
+          <p style="margin-top: 0.5rem">
+            <span class="muted">Rounds: ${m.rounds_completed || 0}</span>
+            <span class="muted" style="margin-left: 1rem">Cost: ${cost}</span>
+          </p>
+        </div>`;
+    });
+
+    function showDetail(id) {
+      const m = meetings.find(m => m.id === id);
+      if (!m) return;
+
+      const detail = document.getElementById('meeting-detail');
+      detail.style.display = 'block';
+
+      document.getElementById('detail-title').textContent =
+        (m.type === 'standup' ? 'Standup' : 'Ad Hoc Meeting') + ': ' + m.topic;
+
+      const agents = m.metadata?.agents || [];
+      const cost = m.metadata?.total_cost_cents
+        ? '$' + (m.metadata.total_cost_cents / 100).toFixed(2) : '-';
+
+      document.getElementById('detail-stats').innerHTML = `
+        <div class="stat-card"><div class="stat-value">${m.rounds_completed || 0}</div><div class="stat-label">Rounds</div></div>
+        <div class="stat-card"><div class="stat-value">${agents.length || '-'}</div><div class="stat-label">Participants</div></div>
+        <div class="stat-card"><div class="stat-value">${cost}</div><div class="stat-label">Cost</div></div>
+      `;
+
+      // Synthesis
+      const synDiv = document.getElementById('detail-synthesis');
+      if (m.synthesis) {
+        synDiv.innerHTML = `<h2>COO Synthesis</h2><div class="coo-review">${m.synthesis.replace(/\n/g, '<br>')}</div>`;
+      } else {
+        synDiv.innerHTML = '';
+      }
+
+      // Transcript
+      const transcriptDiv = document.getElementById('detail-transcript');
+      let transcript = [];
+      try {
+        transcript = typeof m.transcript === 'string' ? JSON.parse(m.transcript) : (m.transcript || []);
+      } catch { transcript = []; }
+
+      if (transcript.length === 0) {
+        transcriptDiv.innerHTML = '<div class="empty-state">No transcript available.</div>';
+      } else {
+        transcriptDiv.innerHTML = transcript.map(t => {
+          const roundLabel = t.type === 'synthesis' ? 'Synthesis' : 'Round ' + t.round;
+          const typeLabel = t.type === 'perspective' ? 'Initial' :
+            t.type === 'response' ? 'Response' : 'Synthesis';
+          return `
+            <div class="approval-card">
+              <div class="approval-header">
+                <span class="agent-tag">${t.agent_name}</span>
+                <span class="muted">${roundLabel} - ${typeLabel}</span>
+                <span class="model-badge">${t.model}</span>
+                <span class="muted" style="margin-left:auto">$${((t.cost_cents || 0) / 100).toFixed(3)}</span>
+              </div>
+              <div class="approval-content">${(t.content || '').replace(/\n/g, '<br>')}</div>
+            </div>`;
+        }).join('');
+      }
+
+      detail.scrollIntoView({ behavior: 'smooth' });
+    }
+  </script>
+</body>
+</html>

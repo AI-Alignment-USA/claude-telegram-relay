@@ -29,7 +29,7 @@ const COMMAND_MAP: Record<string, string> = {
 };
 
 // Workflow commands (handled separately from agent routing)
-export const WORKFLOW_COMMANDS = ["/approve", "/reject", "/changes", "/status", "/costs", "/approved"];
+export const WORKFLOW_COMMANDS = ["/approve", "/reject", "/changes", "/status", "/costs", "/approved", "/meeting"];
 
 export function isWorkflowCommand(text: string): boolean {
   const cmd = text.split(" ")[0].toLowerCase();
@@ -98,7 +98,8 @@ export function getHelpText(): string {
     `  /status - View agent status and pending tasks\n` +
     `  /costs - View today's cost breakdown\n` +
     `  /approve - View pending approvals\n` +
-    `  /approved - Get most recently approved output\n\n` +
+    `  /approved - Get most recently approved output\n` +
+    `  /meeting [topic] - Call an ad hoc executive meeting\n\n` +
     `_Wellness also triggers on natural phrases like "I need to vent" or "can we talk"_\n\n` +
     `Send a message without a command prefix for general assistant.`
   );

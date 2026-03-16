@@ -267,6 +267,49 @@ app.get("/costs", async (c) => {
 });
 
 // ============================================================
+// MEETINGS
+// ============================================================
+
+app.get("/meetings", async (c) => {
+  if (!supabase) return c.text("Supabase not configured", 500);
+
+  const { data: meetings } = await supabase
+    .from("meetings")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(30);
+
+  const meetingsList = meetings || [];
+  const standups = meetingsList.filter((m: any) => m.type === "standup");
+  const adhocs = meetingsList.filter((m: any) => m.type === "adhoc");
+  const totalCostCents = meetingsList.reduce(
+    (s: number, m: any) => s + (m.metadata?.total_cost_cents || 0), 0
+  );
+
+  return c.html(
+    await renderView("meetings", {
+      meetings: JSON.stringify(meetingsList),
+      totalMeetings: meetingsList.length,
+      standupCount: standups.length,
+      adhocCount: adhocs.length,
+      totalCost: (totalCostCents / 100).toFixed(2),
+    })
+  );
+});
+
+// Meeting detail API
+app.get("/api/meeting/:id", async (c) => {
+  if (!supabase) return c.json({ error: "No DB" }, 500);
+  const id = c.req.param("id");
+  const { data } = await supabase
+    .from("meetings")
+    .select("*")
+    .eq("id", id)
+    .single();
+  return c.json(data || { error: "Not found" });
+});
+
+// ============================================================
 // NEWS ROOM
 // ============================================================
 

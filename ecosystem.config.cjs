@@ -51,6 +51,20 @@ module.exports = {
     },
 
     // ============================================================
+    // MONDAY STANDUP
+    // ============================================================
+    {
+      name: "monday-standup",
+      script: "monday-standup.cjs",
+      cwd: __dirname,
+      out_file: "logs/monday-standup.log",
+      error_file: "logs/monday-standup.error.log",
+      autorestart: false,
+      cron_restart: "30 9 * * 1",
+      watch: false,
+    },
+
+    // ============================================================
     // CFO REPORTS
     // ============================================================
     {
@@ -161,6 +175,54 @@ module.exports = {
       error_file: "logs/claude-security-audit.error.log",
       autorestart: false,
       cron_restart: "0 20 * * 0",
+      watch: false,
+    },
+
+    // ============================================================
+    // WELLNESS
+    // ============================================================
+    {
+      name: "wellness-checkin",
+      script: "wellness-checkin.cjs",
+      cwd: __dirname,
+      out_file: "logs/wellness-checkin.log",
+      error_file: "logs/wellness-checkin.error.log",
+      autorestart: false,
+      cron_restart: "0 20 * * 3",
+      watch: false,
+    },
+
+    // ============================================================
+    // CISO (Chief Information Security Officer)
+    // ============================================================
+    {
+      name: "ciso-patrol",
+      script: "ciso-patrol.cjs",
+      cwd: __dirname,
+      out_file: "logs/ciso-patrol.log",
+      error_file: "logs/ciso-patrol.error.log",
+      autorestart: false,
+      cron_restart: "0 23 * * *",
+      watch: false,
+    },
+    {
+      name: "ciso-brief",
+      script: "ciso-brief.cjs",
+      cwd: __dirname,
+      out_file: "logs/ciso-brief.log",
+      error_file: "logs/ciso-brief.error.log",
+      autorestart: false,
+      cron_restart: "30 6 * * *",
+      watch: false,
+    },
+    {
+      name: "ciso-weekly",
+      script: "ciso-weekly.cjs",
+      cwd: __dirname,
+      out_file: "logs/ciso-weekly.log",
+      error_file: "logs/ciso-weekly.error.log",
+      autorestart: false,
+      cron_restart: "30 6 * * 1",
       watch: false,
     },
   ],

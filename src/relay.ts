@@ -33,6 +33,7 @@ import {
   submitForApproval,
   determineAutonomyTier,
 } from "./workflows/approval.ts";
+import { runAdHocMeeting } from "./meetings/adhoc.ts";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.path));
 
@@ -268,6 +269,22 @@ bot.on("callback_query:data", async (ctx) => {
 
   if (!taskId || !supabase) {
     await ctx.answerCallbackQuery({ text: "Error: missing data" });
+    return;
+  }
+
+  // Handle meeting approval/rejection
+  if (action === "meeting_approve" || action === "meeting_reject") {
+    const status = action === "meeting_approve" ? "completed" : "cancelled";
+    const label = action === "meeting_approve" ? "Recommendation approved." : "Recommendation rejected.";
+
+    await supabase
+      .from("meetings")
+      .update({ status, completed_at: new Date().toISOString() })
+      .eq("id", taskId);
+
+    await ctx.answerCallbackQuery({ text: label });
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await ctx.reply(label);
     return;
   }
 
@@ -594,6 +611,21 @@ async function handleWorkflowCommand(
 
       await ctx.reply(msg, { reply_markup: keyboard, parse_mode: "Markdown" });
     }
+  } else if (cmd === "/meeting") {
+    if (!supabase) {
+      await ctx.reply("Supabase not configured.");
+      return;
+    }
+    const topic = text.substring("/meeting".length).trim();
+    if (!topic) {
+      await ctx.reply("Usage: /meeting [topic or decision needed]\n\nExample: /meeting Should we launch the newsletter this week?");
+      return;
+    }
+    // Run meeting asynchronously (it sends its own messages)
+    runAdHocMeeting({ bot, supabase, topic }).catch((err) => {
+      console.error("Meeting error:", err);
+      ctx.reply("Meeting failed. Check logs for details.");
+    });
   } else if (cmd === "/approved") {
     if (!supabase) {
       await ctx.reply("Supabase not configured.");
