@@ -437,6 +437,11 @@ app.get("/health", async (c) => {
 // START — bind to localhost + Tailscale only (never 0.0.0.0)
 // ============================================================
 
+// Prevent Tailscale or any secondary bind failure from crashing the process
+process.on("uncaughtException", (err) => {
+  console.error(`[command-center] Uncaught exception (non-fatal): ${err.message}`);
+});
+
 const TAILSCALE_IP = process.env.TAILSCALE_IP || "";
 const TAILSCALE_PORT = parseInt(process.env.TAILSCALE_PORT || String(PORT));
 
@@ -457,6 +462,9 @@ if (TAILSCALE_IP) {
     });
     console.log(`Dashboard listening on http://${TAILSCALE_IP}:${tsPort} (Tailscale)`);
   } catch (e: any) {
-    console.error(`Tailscale bind failed (${TAILSCALE_IP}:${tsPort}): ${e.message}`);
+    console.warn(
+      `[command-center] WARNING: Tailscale bind failed (${TAILSCALE_IP}:${tsPort}): ${e.message}. ` +
+      `Dashboard remains accessible on http://127.0.0.1:${PORT}`
+    );
   }
 }
