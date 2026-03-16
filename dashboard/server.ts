@@ -421,6 +421,10 @@ app.get("/health", async (c) => {
   const { isConfigured: mcConfigured } = await import("../src/utils/mailchimp.ts");
   integrations.mailchimp = mcConfigured() ? "configured" : "not configured";
 
+  // Gmail (live API check)
+  const { checkStatus: gmailCheck } = await import("../src/utils/gmail.ts");
+  integrations.gmail = await gmailCheck();
+
   // Gumroad (live API check)
   const { checkStatus: gumroadCheck } = await import("../src/utils/gumroad.ts");
   integrations.gumroad = await gumroadCheck();
