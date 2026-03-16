@@ -21,12 +21,14 @@ import {
 import {
   isAgentCommand,
   isWorkflowCommand,
+  isWellnessTrigger,
   routeMessage,
   getHelpText,
 } from "./agents/router.ts";
 import { getAgent } from "./agents/registry.ts";
 import { executeAgent } from "./agents/executor.ts";
 import { formatCostReport } from "./utils/cost.ts";
+import { stripEmDashes } from "./utils/telegram.ts";
 import {
   submitForApproval,
   determineAutonomyTier,
@@ -381,6 +383,12 @@ bot.on("message:text", async (ctx) => {
     return;
   }
 
+  // Natural wellness triggers (route to Head of Wellness without explicit command)
+  if (isWellnessTrigger(text)) {
+    await handleAgentCommand(ctx, `/wellness ${text}`);
+    return;
+  }
+
   // Default: existing general assistant behavior
   await saveMessage("user", text);
 
@@ -404,6 +412,35 @@ bot.on("message:text", async (ctx) => {
 // AGENT COMMAND HANDLER
 // ============================================================
 
+// Track recent agent context for follow-up conversations
+const agentContextHistory = new Map<string, { messages: string[]; lastActivity: number }>();
+
+function getAgentContext(agentId: string): string {
+  const ctx = agentContextHistory.get(agentId);
+  if (!ctx) return "";
+  // Expire context after 30 minutes of inactivity
+  if (Date.now() - ctx.lastActivity > 30 * 60 * 1000) {
+    agentContextHistory.delete(agentId);
+    return "";
+  }
+  if (ctx.messages.length === 0) return "";
+  return "Recent conversation context with this agent:\n" + ctx.messages.join("\n") + "\n";
+}
+
+function addToAgentContext(agentId: string, role: string, content: string): void {
+  let ctx = agentContextHistory.get(agentId);
+  if (!ctx) {
+    ctx = { messages: [], lastActivity: Date.now() };
+    agentContextHistory.set(agentId, ctx);
+  }
+  ctx.messages.push(`${role}: ${content.substring(0, 500)}`);
+  ctx.lastActivity = Date.now();
+  // Keep last 6 exchanges
+  if (ctx.messages.length > 12) {
+    ctx.messages = ctx.messages.slice(-12);
+  }
+}
+
 async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
   const route = await routeMessage(text);
   if (!route) {
@@ -415,6 +452,7 @@ async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
   const autonomyTier = determineAutonomyTier(agent, message);
 
   await saveMessage("user", text, { agent_id: agent.id });
+  addToAgentContext(agent.id, "User", message);
 
   // Create task record
   let taskId: string | undefined;
@@ -434,10 +472,14 @@ async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
     taskId = data?.id;
   }
 
+  // Build additional context from prior agent conversations
+  const priorContext = getAgentContext(agent.id);
+
   // Execute with the agent's context and model
   const result = await executeAgent(agent, message, {
     supabase,
     taskId,
+    additionalContext: priorContext || undefined,
   });
 
   // Route through approval pipeline based on tier
@@ -455,6 +497,7 @@ async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
     if (approval.handled) {
       // Approval workflow sent its own Telegram messages
       await saveMessage("assistant", result.response, { agent_id: agent.id });
+      addToAgentContext(agent.id, "Agent", result.response);
       return;
     }
   }
@@ -478,6 +521,7 @@ async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
   }
 
   await saveMessage("assistant", result.response, { agent_id: agent.id });
+  addToAgentContext(agent.id, "Agent", result.response);
 
   const header = `*[${agent.name}]*\n\n`;
   await sendResponse(ctx, header + result.response);
@@ -550,6 +594,26 @@ async function handleWorkflowCommand(
 
       await ctx.reply(msg, { reply_markup: keyboard, parse_mode: "Markdown" });
     }
+  } else if (cmd === "/approved") {
+    if (!supabase) {
+      await ctx.reply("Supabase not configured.");
+      return;
+    }
+    const { data: recentApproved } = await supabase
+      .from("tasks")
+      .select("agent_id, title, output")
+      .eq("status", "approved")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (!recentApproved || recentApproved.length === 0) {
+      await ctx.reply("No recently approved tasks.");
+      return;
+    }
+
+    const task = recentApproved[0];
+    const output = task.output || "(no output)";
+    await sendResponse(ctx, `*[${task.agent_id}] ${task.title}*\n\nApproved output:\n\n${output}`);
   }
 }
 
@@ -741,6 +805,9 @@ function buildPrompt(
 }
 
 async function sendResponse(ctx: Context, response: string): Promise<void> {
+  // Strip em dashes from all outgoing messages
+  response = stripEmDashes(response);
+
   // Telegram has a 4096 character limit
   const MAX_LENGTH = 4000;
 

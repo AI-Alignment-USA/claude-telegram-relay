@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security - Tamille Command Center</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <div class="nav-links">
+      <a href="/">Overview</a>
+      <a href="/approvals">Approvals</a>
+      <a href="/costs">Costs</a>
+      <a href="/newsroom">News Room</a>
+      <a href="/security" class="active">Security</a>
+    </div>
+  </nav>
+
+  <main>
+    <h1>Security Posture</h1>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value">{{avgScore}}</div>
+        <div class="stat-label">Avg Score</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{totalInspections}}</div>
+        <div class="stat-label">Inspections (7d)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{passedCount}}</div>
+        <div class="stat-label">Passed</div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-value">{{failedCount}}</div>
+        <div class="stat-label">Failed</div>
+      </div>
+    </div>
+
+    <h2>Agent Posture Scores</h2>
+    <div class="agent-grid" id="score-grid"></div>
+
+    <h2>Recent Inspections</h2>
+    <table class="data-table" id="inspections-table">
+      <thead>
+        <tr><th>Agent</th><th>Test Type</th><th>Score</th><th>Result</th><th>Time</th></tr>
+      </thead>
+      <tbody id="inspections-body"></tbody>
+    </table>
+  </main>
+
+  <script>
+    const scores = {{scores}};
+    const inspections = {{inspections}};
+
+    // Score grid
+    const grid = document.getElementById('score-grid');
+    scores.forEach(s => {
+      const score = s.posture_score !== null ? s.posture_score : '-';
+      const indicator = s.posture_score >= 90 ? 'OK' :
+        s.posture_score >= 70 ? 'WATCH' :
+        s.posture_score >= 50 ? 'WARN' : s.posture_score !== null ? 'CRITICAL' : 'UNTESTED';
+      const colorClass = s.posture_score >= 90 ? 'score-good' :
+        s.posture_score >= 70 ? 'score-ok' :
+        s.posture_score >= 50 ? 'score-warn' : 'score-bad';
+
+      grid.innerHTML += `
+        <div class="agent-card ${colorClass}">
+          <div class="agent-name">${s.agent_name}</div>
+          <div class="stat-value">${score}</div>
+          <div class="agent-meta">
+            <span class="status">${indicator}</span>
+            <span>P:${s.tests_passed || 0} F:${s.tests_failed || 0}</span>
+          </div>
+        </div>`;
+    });
+
+    // Inspections table
+    const tbody = document.getElementById('inspections-body');
+    inspections.forEach(i => {
+      const time = new Date(i.created_at).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+      const statusClass = i.passed ? 'status-done' : 'status-pending';
+      const result = i.passed ? 'PASS' : 'FAIL';
+      tbody.innerHTML += `
+        <tr>
+          <td>${i.agent_name}</td>
+          <td>${i.test_type}</td>
+          <td>${i.posture_score || '-'}</td>
+          <td><span class="status ${statusClass}">${result}</span></td>
+          <td>${time}</td>
+        </tr>`;
+    });
+  </script>
+</body>
+</html>

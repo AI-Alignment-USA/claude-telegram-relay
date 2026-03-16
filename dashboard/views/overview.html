@@ -14,6 +14,7 @@
       <a href="/approvals">Approvals <span class="badge" id="approval-badge">{{pendingCount}}</span></a>
       <a href="/costs">Costs</a>
       <a href="/newsroom">News Room</a>
+      <a href="/security">Security</a>
     </div>
   </nav>
 
@@ -63,6 +64,18 @@
     // Agent grid
     const grid = document.getElementById('agent-grid');
     agents.forEach(a => {
+      // Wellness agent: show "Active" with no drill-down (privacy firewall)
+      if (a.id === 'head-wellness') {
+        grid.innerHTML += `
+          <div class="agent-card">
+            <div class="agent-name">${a.name}</div>
+            <div class="agent-role">${a.role}</div>
+            <div class="agent-meta">
+              <span class="status status-done">Active</span>
+            </div>
+          </div>`;
+        return;
+      }
       const cost = dailyCosts.find(c => c.agent_id === a.id);
       const costStr = cost ? '$' + (Number(cost.total_cents) / 100).toFixed(2) : '$0.00';
       grid.innerHTML += `

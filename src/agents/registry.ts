@@ -100,6 +100,31 @@ const AGENT_DEFS: Omit<AgentConfig, "systemPrompt">[] = [
     autonomyDefault: 1,
     constraints: [],
   },
+  {
+    id: "head-wellness",
+    name: "Head of Wellness",
+    role: "Personal Confidant & Mental Health Check-in",
+    modelDefault: "sonnet",
+    modelEscalated: "opus",
+    autonomyDefault: 3,
+    constraints: [
+      "NEVER share wellness conversation content with other agents",
+      "ALL conversations are private, no COO review",
+      "NEVER use em dashes in any output",
+    ],
+  },
+  {
+    id: "ciso",
+    name: "CISO",
+    role: "Chief Information Security Officer",
+    modelDefault: "sonnet",
+    modelEscalated: "opus",
+    autonomyDefault: 1,
+    constraints: [
+      "Reports directly to Crevita, not through COO",
+      "NEVER use em dashes in any output",
+    ],
+  },
 ];
 
 const agentCache = new Map<string, AgentConfig>();

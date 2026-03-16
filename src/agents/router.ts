@@ -23,10 +23,13 @@ const COMMAND_MAP: Record<string, string> = {
   "/household": "head-household",
   "/news": "head-newsroom",
   "/newsroom": "head-newsroom",
+  "/wellness": "head-wellness",
+  "/security": "ciso",
+  "/ciso": "ciso",
 };
 
 // Workflow commands (handled separately from agent routing)
-export const WORKFLOW_COMMANDS = ["/approve", "/reject", "/changes", "/status", "/costs"];
+export const WORKFLOW_COMMANDS = ["/approve", "/reject", "/changes", "/status", "/costs", "/approved"];
 
 export function isWorkflowCommand(text: string): boolean {
   const cmd = text.split(" ")[0].toLowerCase();
@@ -36,6 +39,34 @@ export function isWorkflowCommand(text: string): boolean {
 export function isAgentCommand(text: string): boolean {
   const cmd = text.split(" ")[0].toLowerCase();
   return cmd in COMMAND_MAP;
+}
+
+// Natural language triggers that route to wellness without a command prefix
+const WELLNESS_TRIGGERS = [
+  "i need to vent",
+  "can we talk",
+  "i'm feeling",
+  "im feeling",
+  "i feel like",
+  "having a rough",
+  "having a hard",
+  "i'm struggling",
+  "im struggling",
+  "i'm overwhelmed",
+  "im overwhelmed",
+  "i need someone to talk to",
+  "mental health",
+  "i'm stressed",
+  "im stressed",
+  "i'm burnt out",
+  "im burnt out",
+  "i'm burned out",
+  "im burned out",
+];
+
+export function isWellnessTrigger(text: string): boolean {
+  const lower = text.toLowerCase();
+  return WELLNESS_TRIGGERS.some((t) => lower.includes(t));
 }
 
 export async function routeMessage(text: string): Promise<RouteResult | null> {
@@ -57,7 +88,7 @@ export async function routeMessage(text: string): Promise<RouteResult | null> {
 
 export function getHelpText(): string {
   const commands = Object.entries(COMMAND_MAP)
-    .filter(([cmd]) => !cmd.startsWith("/tamille")) // skip alias
+    .filter(([cmd]) => !cmd.startsWith("/tamille") && !cmd.startsWith("/ciso")) // skip aliases
     .map(([cmd, id]) => `  ${cmd} - ${id}`)
     .join("\n");
 
@@ -66,7 +97,9 @@ export function getHelpText(): string {
     `*Workflow Commands*\n` +
     `  /status - View agent status and pending tasks\n` +
     `  /costs - View today's cost breakdown\n` +
-    `  /approve - View pending approvals\n\n` +
+    `  /approve - View pending approvals\n` +
+    `  /approved - Get most recently approved output\n\n` +
+    `_Wellness also triggers on natural phrases like "I need to vent" or "can we talk"_\n\n` +
     `Send a message without a command prefix for general assistant.`
   );
 }

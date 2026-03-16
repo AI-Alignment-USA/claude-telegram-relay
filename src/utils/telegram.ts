@@ -41,3 +41,11 @@ export async function sendCostAlert(alerts: string[]): Promise<void> {
   const message = `*Cost Alert*\n\n${alerts.join("\n")}`;
   await sendTelegram(message, { parseMode: "Markdown" });
 }
+
+/**
+ * Strip em dashes from text before it reaches Telegram.
+ * Replaces em dashes (U+2014) and en dashes (U+2013) with regular hyphens.
+ */
+export function stripEmDashes(text: string): string {
+  return text.replace(/\u2014/g, "-").replace(/\u2013/g, "-");
+}

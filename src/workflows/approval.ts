@@ -12,6 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Bot } from "grammy";
 import { getAgent, type AgentConfig } from "../agents/registry.ts";
 import { executeAgent } from "../agents/executor.ts";
+import { stripEmDashes } from "../utils/telegram.ts";
 
 const CHAT_ID = process.env.TELEGRAM_USER_ID || "";
 
@@ -114,18 +115,22 @@ async function sendApprovalToUser(
   output: string,
   cooReview: string | null
 ): Promise<void> {
+  // Strip em dashes and internal process language from all output
+  const cleanOutput = stripProcessLanguage(stripEmDashes(output));
+  const cleanReview = cooReview ? stripEmDashes(cooReview) : null;
+
   // Build the message
   let msg = `*[${agent.name}] Awaiting Approval*\n`;
   msg += `_${title}_\n\n`;
 
-  if (cooReview) {
-    msg += `*Tamille's Review:*\n${cooReview}\n\n`;
+  if (cleanReview) {
+    msg += `*Tamille's Review:*\n${cleanReview}\n\n`;
     msg += `---\n\n`;
   }
 
-  msg += `*Draft:*\n${output.substring(0, 2500)}`;
+  msg += `*Draft:*\n${cleanOutput.substring(0, 2500)}`;
 
-  if (output.length > 2500) {
+  if (cleanOutput.length > 2500) {
     msg += "\n\n_(truncated, send /approve to see full)_";
   }
 
@@ -178,6 +183,23 @@ function buildCooReviewPrompt(
 }
 
 /**
+ * Strip internal process language from agent output before it reaches the user.
+ * Phrases like "COO review", "approval chain", "Tier 2" should not appear in
+ * user-facing content from CMO, Household, or other sub-agents.
+ */
+function stripProcessLanguage(text: string): string {
+  return text
+    .replace(/\bCOO review\b/gi, "review")
+    .replace(/\bawaiting COO\b/gi, "under review")
+    .replace(/\bapproval chain\b/gi, "approval")
+    .replace(/\bTier [123]\b/gi, "")
+    .replace(/\bsub-?agent\b/gi, "team member")
+    .replace(/\bautonomy tier\b/gi, "")
+    .replace(/  +/g, " ")
+    .trim();
+}
+
+/**
  * Determine the autonomy tier for a given agent command.
  * Can be overridden by explicit task type keywords.
  */
@@ -185,6 +207,9 @@ export function determineAutonomyTier(
   agent: AgentConfig,
   message: string
 ): 1 | 2 | 3 {
+  // Wellness is always Tier 3 (private, no COO review)
+  if (agent.id === "head-wellness") return 3;
+
   const lower = message.toLowerCase();
 
   // Explicit Tier 3 triggers (manual only)

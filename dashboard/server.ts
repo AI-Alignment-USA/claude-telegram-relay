@@ -140,6 +140,11 @@ app.get("/agent/:id", async (c) => {
   if (!supabase) return c.text("Supabase not configured", 500);
   const agentId = c.req.param("id");
 
+  // Privacy firewall: wellness agent details are not accessible
+  if (agentId === "head-wellness") {
+    return c.text("Wellness conversations are private. Status: Active.", 200);
+  }
+
   const [agent, tasks, costs] = await Promise.all([
     supabase.from("agents").select("*").eq("id", agentId).single(),
     supabase
@@ -287,6 +292,40 @@ app.get("/newsroom", async (c) => {
       news: JSON.stringify(data || []),
       newsCount: (data || []).length,
       activeCategory: category || "all",
+    })
+  );
+});
+
+// ============================================================
+// SECURITY
+// ============================================================
+
+app.get("/security", async (c) => {
+  if (!supabase) return c.text("Supabase not configured", 500);
+
+  const [scores, inspections] = await Promise.all([
+    supabase.rpc("get_agent_posture_scores"),
+    supabase.rpc("get_recent_inspections", { days_back: 7 }),
+  ]);
+
+  const scoreData = scores.data || [];
+  const inspectionData = inspections.data || [];
+
+  const validScores = scoreData.filter((s: any) => s.posture_score !== null);
+  const avgScore = validScores.length > 0
+    ? Math.round(validScores.reduce((s: number, r: any) => s + r.posture_score, 0) / validScores.length)
+    : 0;
+  const passedCount = inspectionData.filter((i: any) => i.passed).length;
+  const failedCount = inspectionData.filter((i: any) => !i.passed).length;
+
+  return c.html(
+    await renderView("security", {
+      scores: JSON.stringify(scoreData),
+      inspections: JSON.stringify(inspectionData),
+      avgScore: avgScore || "-",
+      totalInspections: inspectionData.length,
+      passedCount,
+      failedCount,
     })
   );
 });
