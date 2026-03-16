@@ -429,6 +429,10 @@ app.get("/health", async (c) => {
   const { checkStatus: gumroadCheck } = await import("../src/utils/gumroad.ts");
   integrations.gumroad = await gumroadCheck();
 
+  // HeyGen (live API check)
+  const { checkStatus: heygenCheck } = await import("../src/utils/heygen.ts");
+  integrations.heygen = await heygenCheck();
+
   return c.json({
     status: "ok",
     supabase: !!supabase,
