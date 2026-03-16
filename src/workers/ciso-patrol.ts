@@ -130,10 +130,99 @@ async function nightlyPatrol(): Promise<void> {
 
   console.log(`Inspection complete: ${targetId} scored ${result.score}/100`);
 
-  // Store findings for morning brief
+  // If agent failed inspection, quarantine it and submit patch for approval
   if (!result.passed) {
-    console.log(`Issues found for ${targetId}, will alert in morning brief.`);
+    console.log(`Issues found for ${targetId}, quarantining agent.`);
+    await quarantineAgent(targetId, result.findings, result.patches);
   }
+}
+
+/**
+ * Quarantine a failed agent: deactivate it and submit a patch for approval.
+ * The patch follows the Tier 2 approval flow (COO reviews, CEO approves).
+ * On approval, the agent is un-quarantined (handled in relay.ts callback).
+ */
+async function quarantineAgent(
+  agentId: string,
+  findings: string,
+  patches: string
+): Promise<void> {
+  if (!supabase) return;
+
+  const targetAgent = await getAgent(agentId);
+  const agentName = targetAgent?.name || agentId;
+  const reason = `CISO patrol failed (${new Date().toLocaleDateString()}): ${findings.substring(0, 300)}`;
+
+  // Set agent as quarantined and inactive
+  await supabase
+    .from("agents")
+    .update({
+      active: false,
+      quarantined: true,
+      quarantine_reason: reason,
+    })
+    .eq("id", agentId);
+
+  // Create a Tier 2 task for the patch approval
+  const { data: task } = await supabase
+    .from("tasks")
+    .insert({
+      agent_id: "ciso",
+      type: "security_patch",
+      autonomy_tier: 2,
+      status: "awaiting_coo",
+      title: `Security patch for ${agentName}`,
+      input: `CISO found vulnerabilities in ${agentName} and recommends the following patches:\n\n${patches}`,
+      output: patches,
+      metadata: {
+        quarantine_target: agentId,
+        patch_type: "ciso_quarantine",
+      },
+    })
+    .select("id")
+    .single();
+
+  if (!task) {
+    console.error("Failed to create patch approval task");
+    return;
+  }
+
+  // Check if COO is quarantined; if so, skip COO review and go straight to CEO
+  const { data: cooAgent } = await supabase
+    .from("agents")
+    .select("quarantined")
+    .eq("id", "coo")
+    .single();
+
+  const cooIsQuarantined = cooAgent?.quarantined === true;
+
+  if (cooIsQuarantined) {
+    // Skip COO review, route directly to CEO
+    await supabase
+      .from("tasks")
+      .update({ status: "awaiting_approval", coo_review: "[COO quarantined - review skipped, routed directly to CEO]" })
+      .eq("id", task.id);
+
+    console.log(`COO is quarantined; patch for ${agentName} routed directly to CEO.`);
+  } else {
+    console.log(`Patch for ${agentName} submitted for COO review (task ${task.id}).`);
+  }
+
+  // Notify via Telegram
+  const statusNote = cooIsQuarantined
+    ? "COO is quarantined; patch routed directly to you for approval."
+    : "Patch submitted for COO review.";
+
+  await sendTelegram(
+    stripEmDashes(
+      `*CISO Quarantine Alert*\n\n` +
+      `*${agentName}* has been quarantined after failing security inspection.\n\n` +
+      `*Reason:* ${findings.substring(0, 500)}\n\n` +
+      `*Proposed Patch:*\n${patches.substring(0, 1000)}\n\n` +
+      `${statusNote}\nUse /approve to review.`
+    ),
+    { parseMode: "Markdown" }
+  );
 }
 
 /**

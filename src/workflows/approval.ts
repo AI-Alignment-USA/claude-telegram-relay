@@ -67,11 +67,21 @@ export async function submitForApproval(opts: {
     .update({ status: "awaiting_coo", output })
     .eq("id", taskId);
 
-  // COO reviews the draft
-  const coo = await getAgent("coo");
+  // Check if COO is quarantined; if so, skip COO review entirely
+  const { data: cooRow } = await supabase
+    .from("agents")
+    .select("quarantined")
+    .eq("id", "coo")
+    .single();
+
+  const cooQuarantined = cooRow?.quarantined === true;
+
+  // COO reviews the draft (unless quarantined)
+  const coo = cooQuarantined ? null : await getAgent("coo");
   if (!coo) {
     // Fallback: skip COO, go straight to user
-    await sendApprovalToUser(bot, supabase, taskId, agent, title, output, null);
+    const skipNote = cooQuarantined ? "[COO quarantined - review skipped]" : null;
+    await sendApprovalToUser(bot, supabase, taskId, agent, title, output, skipNote);
     return { handled: true };
   }
 

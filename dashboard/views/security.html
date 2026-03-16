@@ -39,6 +39,10 @@
         <div class="stat-value">{{failedCount}}</div>
         <div class="stat-label">Failed</div>
       </div>
+      <div class="stat-card" style="border-color: var(--red);">
+        <div class="stat-value" style="color: var(--red);">{{quarantinedCount}}</div>
+        <div class="stat-label">Quarantined</div>
+      </div>
     </div>
 
     <h2>Agent Posture Scores</h2>
@@ -56,27 +60,38 @@
   <script>
     const scores = {{scores}};
     const inspections = {{inspections}};
+    const quarantinedAgents = {{quarantinedAgents}};
 
     // Score grid
     const grid = document.getElementById('score-grid');
     scores.forEach(s => {
+      const qInfo = quarantinedAgents.find(q => q.agent_id === s.agent_id);
       const score = s.posture_score !== null ? s.posture_score : '-';
-      const indicator = s.posture_score >= 90 ? 'OK' :
+      const indicator = qInfo ? 'QUARANTINED' :
+        s.posture_score >= 90 ? 'OK' :
         s.posture_score >= 70 ? 'WATCH' :
         s.posture_score >= 50 ? 'WARN' : s.posture_score !== null ? 'CRITICAL' : 'UNTESTED';
-      const colorClass = s.posture_score >= 90 ? 'score-good' :
+      const colorClass = qInfo ? 'score-bad' :
+        s.posture_score >= 90 ? 'score-good' :
         s.posture_score >= 70 ? 'score-ok' :
         s.posture_score >= 50 ? 'score-warn' : 'score-bad';
+      const statusClass = qInfo ? 'status-quarantined' : 'status';
 
-      grid.innerHTML += `
-        <div class="agent-card ${colorClass}">
+      let cardHtml = `
+        <div class="agent-card ${colorClass}${qInfo ? ' quarantined' : ''}">
           <div class="agent-name">${s.agent_name}</div>
           <div class="stat-value">${score}</div>
           <div class="agent-meta">
-            <span class="status">${indicator}</span>
+            <span class="${statusClass}">${indicator}</span>
             <span>P:${s.tests_passed || 0} F:${s.tests_failed || 0}</span>
-          </div>
-        </div>`;
+          </div>`;
+
+      if (qInfo) {
+        cardHtml += `<div class="quarantine-reason" title="${(qInfo.quarantine_reason || '').replace(/"/g, '&quot;')}">${(qInfo.quarantine_reason || 'Security maintenance').substring(0, 120)}</div>`;
+      }
+
+      cardHtml += `</div>`;
+      grid.innerHTML += cardHtml;
     });
 
     // Inspections table

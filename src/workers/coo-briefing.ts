@@ -141,6 +141,23 @@ async function getTodayCosts(): Promise<string> {
   }
 }
 
+async function getQuarantinedAgents(): Promise<string> {
+  if (!supabase) return "";
+  try {
+    const { data } = await supabase
+      .from("agents")
+      .select("id, name, quarantine_reason")
+      .eq("quarantined", true);
+
+    if (!data || data.length === 0) return "";
+    return data
+      .map((a: any) => `- ${a.name}: ${(a.quarantine_reason || "Security maintenance").substring(0, 150)}`)
+      .join("\n");
+  } catch {
+    return "";
+  }
+}
+
 async function getTasksSummary(period: string): Promise<string> {
   if (!supabase) return "No data";
   try {
@@ -223,11 +240,12 @@ async function morningBriefing(): Promise<void> {
     timeZone: "America/Los_Angeles",
   });
 
-  const [weather, goals, approvals, calendarEvents] = await Promise.all([
+  const [weather, goals, approvals, calendarEvents, quarantined] = await Promise.all([
     getWeather(),
     getActiveGoals(),
     getPendingApprovals(),
     calendarConfigured() ? getTodayEvents() : Promise.resolve(null),
+    getQuarantinedAgents(),
   ]);
   const thomas = getThomasSchedule();
   const quote = getQuote();
@@ -254,6 +272,10 @@ async function morningBriefing(): Promise<void> {
     goals,
   );
 
+  if (quarantined) {
+    sections.push(``, `*Quarantined Agents*`, quarantined);
+  }
+
   if (approvals !== "None") {
     sections.push(``, `*Pending Approvals*`, approvals);
   }
@@ -272,10 +294,11 @@ async function eodSummary(): Promise<void> {
     timeZone: "America/Los_Angeles",
   });
 
-  const [tasks, costs, approvals] = await Promise.all([
+  const [tasks, costs, approvals, eodQuarantined] = await Promise.all([
     getTasksSummary("today"),
     getTodayCosts(),
     getPendingApprovals(),
+    getQuarantinedAgents(),
   ]);
 
   const sections = [
@@ -288,6 +311,10 @@ async function eodSummary(): Promise<void> {
     `*Today's Costs*`,
     costs,
   ];
+
+  if (eodQuarantined) {
+    sections.push(``, `*Quarantined Agents*`, eodQuarantined);
+  }
 
   if (approvals !== "None") {
     sections.push(``, `*Pending Approvals*`, approvals);

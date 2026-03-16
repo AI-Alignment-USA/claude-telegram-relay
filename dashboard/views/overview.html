@@ -64,7 +64,25 @@
 
     // Agent grid
     const grid = document.getElementById('agent-grid');
+    const quarantinedAgents = {{quarantinedAgents}};
+
     agents.forEach(a => {
+      const qInfo = quarantinedAgents.find(q => q.agent_id === a.id);
+
+      // Quarantined agent: show red badge with reason
+      if (qInfo) {
+        grid.innerHTML += `
+          <div class="agent-card quarantined">
+            <div class="agent-name">${a.name}</div>
+            <div class="agent-role">${a.role}</div>
+            <div class="agent-meta">
+              <span class="status status-quarantined">Quarantined</span>
+            </div>
+            <div class="quarantine-reason" title="${(qInfo.quarantine_reason || '').replace(/"/g, '&quot;')}">${(qInfo.quarantine_reason || 'Security maintenance').substring(0, 120)}</div>
+          </div>`;
+        return;
+      }
+
       // Wellness agent: show "Active" with no drill-down (privacy firewall)
       if (a.id === 'head-wellness') {
         grid.innerHTML += `

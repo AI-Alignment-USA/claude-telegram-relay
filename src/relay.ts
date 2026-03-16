@@ -301,6 +301,29 @@ bot.on("callback_query:data", async (ctx) => {
       .update({ status, resolved_at: new Date().toISOString() })
       .eq("task_id", taskId);
 
+    // If this is a CISO quarantine patch approval, un-quarantine the agent
+    if (action === "approve") {
+      const { data: task } = await supabase
+        .from("tasks")
+        .select("metadata")
+        .eq("id", taskId)
+        .single();
+
+      if (task?.metadata?.patch_type === "ciso_quarantine" && task?.metadata?.quarantine_target) {
+        const targetId = task.metadata.quarantine_target;
+        await supabase
+          .from("agents")
+          .update({
+            active: true,
+            quarantined: false,
+            quarantine_reason: null,
+          })
+          .eq("id", targetId);
+
+        await ctx.reply(`Agent ${targetId} has been un-quarantined and reactivated.`);
+      }
+    }
+
     await ctx.answerCallbackQuery({
       text: action === "approve" ? "Approved!" : "Rejected.",
     });
@@ -466,6 +489,24 @@ async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
   }
 
   const { agent, message } = route;
+
+  // Check if agent is quarantined
+  if (supabase) {
+    const { data: agentRow } = await supabase
+      .from("agents")
+      .select("quarantined, quarantine_reason")
+      .eq("id", agent.id)
+      .single();
+
+    if (agentRow?.quarantined) {
+      await ctx.reply(
+        `This agent is currently offline for security maintenance.\n\n` +
+        `Use /approve to review the pending security patch.`
+      );
+      return;
+    }
+  }
+
   const autonomyTier = determineAutonomyTier(agent, message);
 
   await saveMessage("user", text, { agent_id: agent.id });

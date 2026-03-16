@@ -104,8 +104,8 @@ app.post("/login", async (c) => {
 app.get("/", async (c) => {
   if (!supabase) return c.text("Supabase not configured", 500);
 
-  const [agents, dailyCosts, pendingApprovals, recentTasks] = await Promise.all([
-    supabase.from("agents").select("*").eq("active", true).order("id"),
+  const [agents, dailyCosts, pendingApprovals, recentTasks, quarantinedAgents] = await Promise.all([
+    supabase.from("agents").select("*").order("id"),
     supabase.rpc("get_daily_costs"),
     supabase.rpc("get_pending_approvals"),
     supabase
@@ -113,16 +113,25 @@ app.get("/", async (c) => {
       .select("id, agent_id, title, status, created_at, completed_at")
       .order("created_at", { ascending: false })
       .limit(20),
+    supabase.from("agents").select("id, name, quarantine_reason").eq("quarantined", true),
   ]);
 
   const totalCostCents = (dailyCosts.data || []).reduce(
     (s: number, r: any) => s + Number(r.total_cents), 0
   );
 
+  // Map quarantined data for the template
+  const quarantinedData = (quarantinedAgents.data || []).map((a: any) => ({
+    agent_id: a.id,
+    agent_name: a.name,
+    quarantine_reason: a.quarantine_reason,
+  }));
+
   return c.html(
     await renderView("overview", {
       agents: JSON.stringify(agents.data || []),
       dailyCosts: JSON.stringify(dailyCosts.data || []),
+      quarantinedAgents: JSON.stringify(quarantinedData),
       pendingCount: (pendingApprovals.data || []).length,
       totalCostToday: (totalCostCents / 100).toFixed(2),
       recentTasks: JSON.stringify(recentTasks.data || []),
@@ -346,13 +355,19 @@ app.get("/newsroom", async (c) => {
 app.get("/security", async (c) => {
   if (!supabase) return c.text("Supabase not configured", 500);
 
-  const [scores, inspections] = await Promise.all([
+  const [scores, inspections, secQuarantined] = await Promise.all([
     supabase.rpc("get_agent_posture_scores"),
     supabase.rpc("get_recent_inspections", { days_back: 7 }),
+    supabase.from("agents").select("id, name, quarantine_reason").eq("quarantined", true),
   ]);
 
   const scoreData = scores.data || [];
   const inspectionData = inspections.data || [];
+  const secQuarantinedData = (secQuarantined.data || []).map((a: any) => ({
+    agent_id: a.id,
+    agent_name: a.name,
+    quarantine_reason: a.quarantine_reason,
+  }));
 
   const validScores = scoreData.filter((s: any) => s.posture_score !== null);
   const avgScore = validScores.length > 0
@@ -365,10 +380,12 @@ app.get("/security", async (c) => {
     await renderView("security", {
       scores: JSON.stringify(scoreData),
       inspections: JSON.stringify(inspectionData),
+      quarantinedAgents: JSON.stringify(secQuarantinedData),
       avgScore: avgScore || "-",
       totalInspections: inspectionData.length,
       passedCount,
       failedCount,
+      quarantinedCount: secQuarantinedData.length,
     })
   );
 });
