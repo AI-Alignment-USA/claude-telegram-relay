@@ -39,9 +39,30 @@ const TWILIO_API = "https://api.twilio.com/2010-04-01";
 const ELEVENLABS_API = "https://api.elevenlabs.io/v1";
 const WS_PORT = parseInt(process.env.VOICE_WS_PORT || "8765");
 
-// The publicly accessible hostname for Twilio to reach our WebSocket server.
-// Required for conversational AI mode. Set to your Tailscale/ngrok/VPS hostname.
+// Public URL for Twilio to reach our WebSocket bridge.
+// Priority: NGROK_URL (full URL) > VOICE_WS_HOST (hostname:port) > TAILSCALE_HOSTNAME
+const NGROK_URL = process.env.NGROK_URL || "";
 const WS_PUBLIC_HOST = process.env.VOICE_WS_HOST || process.env.TAILSCALE_HOSTNAME || "";
+
+/**
+ * Build the publicly accessible WebSocket URL for Twilio Media Streams.
+ * ngrok terminates TLS and forwards to our local WS_PORT, so we use
+ * wss://ngrok-domain/path (no port needed — ngrok handles it).
+ */
+function getPublicWsBaseUrl(): string {
+  if (NGROK_URL) {
+    // Convert https://foo.ngrok-free.dev to wss://foo.ngrok-free.dev
+    return NGROK_URL.replace(/^https?:\/\//, "wss://").replace(/\/$/, "");
+  }
+  if (WS_PUBLIC_HOST) {
+    return `wss://${WS_PUBLIC_HOST}:${WS_PORT}`;
+  }
+  return "";
+}
+
+function hasPublicWsUrl(): boolean {
+  return !!(NGROK_URL || WS_PUBLIC_HOST);
+}
 
 // ============================================================
 // CONFIGURATION CHECKS
@@ -56,7 +77,7 @@ export function isElevenLabsConfigured(): boolean {
 }
 
 export function isConversationalAIReady(): boolean {
-  return isConfigured() && isElevenLabsApiConfigured() && !!WS_PUBLIC_HOST;
+  return isConfigured() && isElevenLabsApiConfigured() && hasPublicWsUrl();
 }
 
 // ============================================================
@@ -316,7 +337,8 @@ async function callCEOConversational(
     const elAgentId = await getOrCreateAgent(agentId, systemPrompt, firstMessage);
 
     // Build TwiML that connects to our WebSocket bridge
-    const wsUrl = `wss://${WS_PUBLIC_HOST}:${WS_PORT}/media-stream?agent=${encodeURIComponent(agentId)}&el_agent_id=${encodeURIComponent(elAgentId)}`;
+    const wsBase = getPublicWsBaseUrl();
+    const wsUrl = `${wsBase}/media-stream?agent=${encodeURIComponent(agentId)}&el_agent_id=${encodeURIComponent(elAgentId)}`;
 
     const twiml =
       `<Response>` +
