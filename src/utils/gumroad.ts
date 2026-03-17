@@ -166,6 +166,57 @@ export async function getProducts(): Promise<ProductInfo[]> {
 }
 
 // ============================================================
+// CMO: READ ACCESS — Product Details & Copy Review
+// ============================================================
+
+export interface ProductDetails {
+  id: string;
+  name: string;
+  price: number;
+  currency: string;
+  description: string;
+  customSummary: string;
+  published: boolean;
+  url: string;
+  shortUrl: string;
+  salesCount: number;
+  salesRevenue: number;
+  customFields: string[];
+  tags: string[];
+}
+
+/**
+ * Get full product details including complete description and copy.
+ * Used by CMO for product copy review and optimization.
+ */
+export async function getProductDetails(productId: string): Promise<ProductDetails | null> {
+  if (!TOKEN) return null;
+
+  try {
+    const data = await gumroadGet(`products/${encodeURIComponent(productId)}`);
+    const p = data.product;
+    return {
+      id: p.id,
+      name: p.name,
+      price: (p.price || 0) / 100,
+      currency: p.currency || "usd",
+      description: p.description || "",
+      customSummary: p.custom_summary || "",
+      published: p.published,
+      url: p.url || "",
+      shortUrl: p.short_url || "",
+      salesCount: p.sales_count || 0,
+      salesRevenue: (p.sales_usd_cents || 0) / 100,
+      customFields: (p.custom_fields || []).map((f: any) => f.name),
+      tags: p.tags || [],
+    };
+  } catch (e: any) {
+    console.error("Gumroad getProductDetails error:", e.message);
+    return null;
+  }
+}
+
+// ============================================================
 // CMO: WRITE ACCESS — Draft Product Listings
 // ============================================================
 
