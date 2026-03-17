@@ -246,7 +246,10 @@ export function determineAutonomyTier(
     lower.includes("email campaign") ||
     lower.includes("message to joshua") ||
     lower.includes("message to co-parent") ||
-    lower.includes("publish")
+    lower.includes("publish") ||
+    lower.includes("call ceo") ||
+    lower.includes("phone call") ||
+    lower.includes("voice call")
   ) {
     return 2;
   }

@@ -442,6 +442,11 @@ app.get("/health", async (c) => {
   const { checkStatus: qboCheck } = await import("../src/utils/quickbooks.ts");
   integrations.quickbooks = await qboCheck();
 
+  // Voice Calling — Twilio + ElevenLabs (live API check)
+  const { checkStatus: voiceCheck, isElevenLabsConfigured } = await import("../src/utils/voice.ts");
+  integrations.voice = await voiceCheck();
+  integrations.voiceTts = isElevenLabsConfigured() ? "configured" : "twilio-fallback";
+
   return c.json({
     status: "ok",
     supabase: !!supabase,

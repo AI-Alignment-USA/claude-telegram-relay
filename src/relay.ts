@@ -34,6 +34,7 @@ import {
   determineAutonomyTier,
 } from "./workflows/approval.ts";
 import { runAdHocMeeting } from "./meetings/adhoc.ts";
+import { callCEO, isConfigured as isVoiceConfigured } from "./utils/voice.ts";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.path));
 
@@ -321,6 +322,19 @@ bot.on("callback_query:data", async (ctx) => {
           .eq("id", targetId);
 
         await ctx.reply(`Agent ${targetId} has been un-quarantined and reactivated.`);
+      }
+
+      // Execute voice call on approval
+      if (task?.metadata?.task_type === "voice_call" && task?.metadata?.call_message) {
+        const agentName = task.metadata.call_agent || "System";
+        const callResult = await callCEO(agentName, task.metadata.call_message);
+        if (callResult) {
+          await ctx.reply(
+            `Call placed to ${callResult.to} (SID: ${callResult.callSid})\nProvider: ${callResult.provider}`
+          );
+        } else {
+          await ctx.reply("Failed to place call. Check voice configuration.");
+        }
       }
     }
 
@@ -687,6 +701,99 @@ async function handleWorkflowCommand(
     const task = recentApproved[0];
     const output = task.output || "(no output)";
     await sendResponse(ctx, `*[${task.agent_id}] ${task.title}*\n\nApproved output:\n\n${output}`);
+  } else if (cmd === "/call") {
+    // /call [agent] [message] or /call [message]
+    if (!isVoiceConfigured()) {
+      await ctx.reply(
+        "Voice calling is not configured. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, " +
+        "TWILIO_PHONE_NUMBER, and CEO_PHONE_NUMBER to .env"
+      );
+      return;
+    }
+
+    const args = text.substring("/call".length).trim();
+    if (!args) {
+      await ctx.reply(
+        "Usage: /call [message]\n\n" +
+        "Example: /call Reminder to review the quarterly report\n\n" +
+        "The message will be converted to speech and played via phone call. " +
+        "Requires CEO approval (Tier 2) before the call is placed."
+      );
+      return;
+    }
+
+    // Parse optional agent prefix: /call ciso Security breach detected
+    const parts = args.split(" ");
+    let agentName = "System";
+    let callMessage = args;
+    const agentIds = ["coo", "cfo", "cmo", "cio", "ciso"];
+    if (agentIds.includes(parts[0].toLowerCase())) {
+      agentName = parts[0].toUpperCase();
+      callMessage = parts.slice(1).join(" ");
+    }
+
+    if (!callMessage.trim()) {
+      await ctx.reply("Please provide a message for the call.");
+      return;
+    }
+
+    // CISO security alerts are Tier 1 (immediate, no approval)
+    if (agentName === "CISO") {
+      const result = await callCEO("CISO", callMessage);
+      if (result) {
+        await ctx.reply(
+          `CISO security call placed immediately.\n` +
+          `To: ${result.to}\nSID: ${result.callSid}\nProvider: ${result.provider}`
+        );
+      } else {
+        await ctx.reply("Failed to place CISO security call. Check voice configuration.");
+      }
+      return;
+    }
+
+    // All other calls go through Tier 2 approval
+    if (!supabase) {
+      await ctx.reply("Supabase not configured. Cannot create approval workflow for calls.");
+      return;
+    }
+
+    // Create a task for the call
+    const { data: taskData } = await supabase
+      .from("tasks")
+      .insert({
+        agent_id: agentName.toLowerCase() === "system" ? "cio" : agentName.toLowerCase(),
+        type: "voice_call",
+        autonomy_tier: 2,
+        status: "awaiting_approval",
+        title: `Phone call: ${callMessage.substring(0, 80)}`,
+        input: callMessage,
+        output: `Call CEO with message: "${callMessage}"`,
+        metadata: {
+          task_type: "voice_call",
+          call_agent: agentName,
+          call_message: callMessage,
+        },
+      })
+      .select("id")
+      .single();
+
+    if (!taskData) {
+      await ctx.reply("Failed to create call task.");
+      return;
+    }
+
+    // Send approval request
+    const keyboard = new InlineKeyboard()
+      .text("Approve Call", `approve:${taskData.id}`)
+      .text("Reject", `reject:${taskData.id}`);
+
+    await ctx.reply(
+      `*[${agentName}] Voice Call Request*\n\n` +
+      `_Will call CEO phone with this message:_\n\n` +
+      `"${callMessage}"\n\n` +
+      `Approve to place the call.`,
+      { reply_markup: keyboard, parse_mode: "Markdown" }
+    );
   }
 }
 
