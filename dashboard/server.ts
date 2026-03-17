@@ -438,6 +438,10 @@ app.get("/health", async (c) => {
   integrations.twitter = await twitterCheck();
   const twitterPostsRemaining = getPostsRemaining();
 
+  // QuickBooks Online (live API check)
+  const { checkStatus: qboCheck } = await import("../src/utils/quickbooks.ts");
+  integrations.quickbooks = await qboCheck();
+
   return c.json({
     status: "ok",
     supabase: !!supabase,
