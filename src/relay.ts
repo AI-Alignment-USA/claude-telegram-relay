@@ -34,7 +34,7 @@ import {
   determineAutonomyTier,
 } from "./workflows/approval.ts";
 import { runAdHocMeeting } from "./meetings/adhoc.ts";
-import { callCEO, isConfigured as isVoiceConfigured } from "./utils/voice.ts";
+import { callCEO, isConfigured as isVoiceConfigured, isConversationalAIReady, getActiveCallCount } from "./utils/voice.ts";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.path));
 
@@ -330,7 +330,7 @@ bot.on("callback_query:data", async (ctx) => {
         const callResult = await callCEO(agentName, task.metadata.call_message);
         if (callResult) {
           await ctx.reply(
-            `Call placed to ${callResult.to} (SID: ${callResult.callSid})\nProvider: ${callResult.provider}`
+            `Call placed to ${callResult.to} (SID: ${callResult.callSid})\nMode: ${callResult.mode} | Provider: ${callResult.provider}`
           );
         } else {
           await ctx.reply("Failed to place call. Check voice configuration.");
@@ -743,7 +743,7 @@ async function handleWorkflowCommand(
       if (result) {
         await ctx.reply(
           `CISO security call placed immediately.\n` +
-          `To: ${result.to}\nSID: ${result.callSid}\nProvider: ${result.provider}`
+          `To: ${result.to}\nSID: ${result.callSid}\nMode: ${result.mode} | Provider: ${result.provider}`
         );
       } else {
         await ctx.reply("Failed to place CISO security call. Check voice configuration.");

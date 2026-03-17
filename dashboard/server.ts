@@ -442,10 +442,13 @@ app.get("/health", async (c) => {
   const { checkStatus: qboCheck } = await import("../src/utils/quickbooks.ts");
   integrations.quickbooks = await qboCheck();
 
-  // Voice Calling — Twilio + ElevenLabs (live API check)
-  const { checkStatus: voiceCheck, isElevenLabsConfigured } = await import("../src/utils/voice.ts");
+  // Voice Calling — Twilio + ElevenLabs Conversational AI (live API check)
+  const { checkStatus: voiceCheck, isElevenLabsConfigured, isConversationalAIReady: convAIReady, getActiveCallCount: activeCallCount } = await import("../src/utils/voice.ts");
+  const { checkStatus: elAgentsCheck } = await import("../src/utils/elevenlabs-agents.ts");
   integrations.voice = await voiceCheck();
-  integrations.voiceTts = isElevenLabsConfigured() ? "configured" : "twilio-fallback";
+  integrations.voiceMode = convAIReady() ? "conversational-ai" : isElevenLabsConfigured() ? "one-way-tts" : "twilio-tts-only";
+  integrations.elevenLabsAgents = await elAgentsCheck();
+  const voiceActiveCalls = activeCallCount();
 
   return c.json({
     status: "ok",
@@ -453,6 +456,7 @@ app.get("/health", async (c) => {
     services: pm2Status,
     integrations,
     twitterPostsRemaining,
+    voiceActiveCalls,
     timestamp: new Date().toISOString(),
   });
 });

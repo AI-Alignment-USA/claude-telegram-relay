@@ -1,8 +1,14 @@
 /**
- * Voice Calling Integration — Twilio + ElevenLabs
+ * Voice Calling Integration — Twilio + ElevenLabs Conversational AI
  *
- * Converts text to speech via ElevenLabs, then places an outbound call
- * via Twilio that plays the generated audio.
+ * Two-way conversational AI calls:
+ *   1. Twilio places outbound call to CEO
+ *   2. Call audio streams via WebSocket to a local bridge server
+ *   3. Bridge server connects to ElevenLabs Conversational AI WebSocket
+ *   4. ElevenLabs handles STT + LLM processing + TTS in real-time
+ *   5. CEO can ask follow-up questions and have a natural conversation
+ *
+ * Falls back to one-way TTS if Conversational AI is unavailable.
  *
  * All agents can trigger a call but it requires Tier 2 approval (CEO must
  * approve before the call is placed), except CISO security alerts which
@@ -11,8 +17,17 @@
  * Required env vars:
  *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
  *   CEO_PHONE_NUMBER
- *   ELEVENLABS_API_KEY (optional — falls back to Twilio <Say> TTS)
+ *   ELEVENLABS_API_KEY (for Conversational AI + TTS fallback)
+ *   VOICE_WS_PORT (optional, default 8765)
  */
+
+import { getAgent } from "../agents/registry.ts";
+import {
+  getOrCreateAgent,
+  getSignedAgentUrl,
+  VOICE_MAP,
+  isConfigured as isElevenLabsApiConfigured,
+} from "./elevenlabs-agents.ts";
 
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID || "";
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN || "";
@@ -20,12 +35,13 @@ const TWILIO_PHONE = process.env.TWILIO_PHONE_NUMBER || "";
 const CEO_PHONE = process.env.CEO_PHONE_NUMBER || "";
 const ELEVENLABS_KEY = process.env.ELEVENLABS_API_KEY || "";
 
-// Default ElevenLabs voice (Rachel — clear, professional)
-const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
-const ELEVENLABS_MODEL = "eleven_monolingual_v1";
-
 const TWILIO_API = "https://api.twilio.com/2010-04-01";
 const ELEVENLABS_API = "https://api.elevenlabs.io/v1";
+const WS_PORT = parseInt(process.env.VOICE_WS_PORT || "8765");
+
+// The publicly accessible hostname for Twilio to reach our WebSocket server.
+// Required for conversational AI mode. Set to your Tailscale/ngrok/VPS hostname.
+const WS_PUBLIC_HOST = process.env.VOICE_WS_HOST || process.env.TAILSCALE_HOSTNAME || "";
 
 // ============================================================
 // CONFIGURATION CHECKS
@@ -39,6 +55,10 @@ export function isElevenLabsConfigured(): boolean {
   return !!ELEVENLABS_KEY;
 }
 
+export function isConversationalAIReady(): boolean {
+  return isConfigured() && isElevenLabsApiConfigured() && !!WS_PUBLIC_HOST;
+}
+
 // ============================================================
 // TYPES
 // ============================================================
@@ -48,62 +68,202 @@ export interface CallResult {
   status: string;
   to: string;
   from: string;
-  provider: "elevenlabs+twilio" | "twilio";
+  provider: "conversational-ai" | "elevenlabs-tts" | "twilio-tts";
+  mode: "two-way" | "one-way";
 }
 
 // ============================================================
-// ELEVENLABS TTS
+// ACTIVE CALL TRACKING
 // ============================================================
+
+interface ActiveCall {
+  callSid: string;
+  agentId: string;
+  elevenLabsAgentId: string;
+  startedAt: number;
+  streamSid?: string;
+}
+
+const activeCalls = new Map<string, ActiveCall>();
+
+export function getActiveCalls(): ActiveCall[] {
+  return Array.from(activeCalls.values());
+}
+
+export function getActiveCallCount(): number {
+  return activeCalls.size;
+}
+
+// ============================================================
+// TWILIO MEDIA STREAM WEBSOCKET BRIDGE SERVER
+// ============================================================
+
+let wsServerStarted = false;
 
 /**
- * Generate speech audio from text using ElevenLabs.
- * Returns a publicly accessible URL for the audio (base64 data URI
- * won't work with Twilio, so we upload to Twilio Assets or use
- * ElevenLabs streaming URL). Here we return the raw audio buffer
- * for use in TwiML <Play> via a base64 data approach or hosted URL.
+ * Start the WebSocket bridge server that connects Twilio Media Streams
+ * to ElevenLabs Conversational AI.
  *
- * For Twilio integration, we generate TTS and host it as a Twilio
- * media resource, or fall back to Twilio's built-in <Say>.
+ * Flow per call:
+ *   Twilio --[mulaw audio]--> Bridge --[PCM16]--> ElevenLabs
+ *   ElevenLabs --[PCM16 audio]--> Bridge --[mulaw]--> Twilio
  */
-async function generateSpeech(text: string): Promise<Buffer | null> {
-  if (!ELEVENLABS_KEY) return null;
+export function startMediaStreamServer(): void {
+  if (wsServerStarted) return;
+  wsServerStarted = true;
 
-  try {
-    const res = await fetch(
-      `${ELEVENLABS_API}/text-to-speech/${ELEVENLABS_VOICE_ID}`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": ELEVENLABS_KEY,
-          "Content-Type": "application/json",
-          Accept: "audio/mpeg",
-        },
-        body: JSON.stringify({
-          text,
-          model_id: ELEVENLABS_MODEL,
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
-          },
-        }),
+  const server = Bun.serve({
+    port: WS_PORT,
+    hostname: "0.0.0.0",
+    fetch(req, server) {
+      const url = new URL(req.url);
+
+      // Twilio sends HTTP POST to get TwiML, then upgrades to WebSocket
+      if (url.pathname === "/media-stream" && req.headers.get("upgrade") === "websocket") {
+        const agentId = url.searchParams.get("agent") || "coo";
+        const elAgentId = url.searchParams.get("el_agent_id") || "";
+        const success = server.upgrade(req, { data: { agentId, elAgentId } });
+        if (success) return undefined;
+        return new Response("WebSocket upgrade failed", { status: 500 });
       }
-    );
 
-    if (!res.ok) {
-      console.error(`ElevenLabs TTS error: ${res.status} ${res.statusText}`);
-      return null;
-    }
+      // Health check
+      if (url.pathname === "/health") {
+        return new Response(JSON.stringify({ status: "ok", activeCalls: activeCalls.size }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
 
-    const arrayBuf = await res.arrayBuffer();
-    return Buffer.from(arrayBuf);
-  } catch (e: any) {
-    console.error("ElevenLabs TTS error:", e.message);
-    return null;
-  }
+      return new Response("Not found", { status: 404 });
+    },
+    websocket: {
+      async open(ws) {
+        const { agentId, elAgentId } = ws.data as { agentId: string; elAgentId: string };
+        console.log(`[voice-bridge] Twilio WebSocket connected for agent: ${agentId}`);
+
+        // Connect to ElevenLabs Conversational AI WebSocket
+        try {
+          const signedUrl = await getSignedAgentUrl(elAgentId);
+          const elWs = new WebSocket(signedUrl);
+
+          // Store ElevenLabs WS on the Twilio WS for message routing
+          (ws as any)._elWs = elWs;
+          (ws as any)._agentId = agentId;
+          (ws as any)._streamSid = null;
+
+          elWs.onopen = () => {
+            console.log(`[voice-bridge] ElevenLabs Conversational AI connected for ${agentId}`);
+
+            // Initialize the conversation with audio format config
+            elWs.send(JSON.stringify({
+              type: "conversation_initiation_client_data",
+              conversation_config_override: {
+                agent: {
+                  prompt: { prompt: "" }, // Uses the agent's configured prompt
+                },
+                tts: {
+                  output_format: "ulaw_8000", // Twilio's native format
+                },
+              },
+            }));
+          };
+
+          elWs.onmessage = (event) => {
+            try {
+              const msg = JSON.parse(typeof event.data === "string" ? event.data : "");
+
+              if (msg.type === "audio") {
+                // ElevenLabs sends audio chunks -> forward to Twilio
+                const streamSid = (ws as any)._streamSid;
+                if (streamSid && msg.audio?.chunk) {
+                  ws.send(JSON.stringify({
+                    event: "media",
+                    streamSid,
+                    media: {
+                      payload: msg.audio.chunk, // base64 mulaw audio
+                    },
+                  }));
+                }
+              } else if (msg.type === "agent_response") {
+                console.log(`[voice-bridge] Agent ${agentId} said: ${msg.agent_response?.substring(0, 100)}`);
+              } else if (msg.type === "user_transcript") {
+                console.log(`[voice-bridge] CEO said: ${msg.user_transcript?.substring(0, 100)}`);
+              } else if (msg.type === "conversation_initiation_metadata") {
+                console.log(`[voice-bridge] Conversation initialized for ${agentId}`);
+              }
+            } catch {}
+          };
+
+          elWs.onerror = (err) => {
+            console.error(`[voice-bridge] ElevenLabs WS error for ${agentId}:`, err);
+          };
+
+          elWs.onclose = () => {
+            console.log(`[voice-bridge] ElevenLabs WS closed for ${agentId}`);
+          };
+        } catch (e: any) {
+          console.error(`[voice-bridge] Failed to connect to ElevenLabs:`, e.message);
+        }
+      },
+
+      message(ws, message) {
+        try {
+          const msg = JSON.parse(typeof message === "string" ? message : message.toString());
+
+          if (msg.event === "start") {
+            // Twilio stream started — save streamSid
+            (ws as any)._streamSid = msg.start?.streamSid;
+            const agentId = (ws as any)._agentId;
+            const callSid = msg.start?.callSid || "";
+
+            activeCalls.set(callSid, {
+              callSid,
+              agentId,
+              elevenLabsAgentId: "",
+              startedAt: Date.now(),
+              streamSid: msg.start?.streamSid,
+            });
+
+            console.log(`[voice-bridge] Stream started: ${msg.start?.streamSid} (call: ${callSid})`);
+          } else if (msg.event === "media") {
+            // Forward Twilio audio to ElevenLabs
+            const elWs = (ws as any)._elWs as WebSocket | undefined;
+            if (elWs && elWs.readyState === WebSocket.OPEN && msg.media?.payload) {
+              elWs.send(JSON.stringify({
+                user_audio_chunk: msg.media.payload, // base64 mulaw audio from caller
+              }));
+            }
+          } else if (msg.event === "stop") {
+            // Call ended — clean up
+            const elWs = (ws as any)._elWs as WebSocket | undefined;
+            if (elWs) elWs.close();
+
+            // Remove from active calls
+            for (const [sid, call] of activeCalls) {
+              if (call.streamSid === (ws as any)._streamSid) {
+                activeCalls.delete(sid);
+                break;
+              }
+            }
+
+            console.log(`[voice-bridge] Stream stopped for ${(ws as any)._agentId}`);
+          }
+        } catch {}
+      },
+
+      close(ws) {
+        const elWs = (ws as any)._elWs as WebSocket | undefined;
+        if (elWs && elWs.readyState === WebSocket.OPEN) elWs.close();
+        console.log(`[voice-bridge] Twilio WebSocket disconnected`);
+      },
+    },
+  });
+
+  console.log(`[voice-bridge] WebSocket bridge server listening on ws://0.0.0.0:${WS_PORT}`);
 }
 
 // ============================================================
-// TWILIO CALL
+// TWILIO CALL — TWO-WAY CONVERSATIONAL AI
 // ============================================================
 
 function twilioAuth(): string {
@@ -111,15 +271,11 @@ function twilioAuth(): string {
 }
 
 /**
- * Place an outbound call to the CEO phone number.
+ * Place an outbound call to the CEO phone number with two-way
+ * conversational AI. The agent will greet the CEO with the initial
+ * message and then handle a natural conversation.
  *
- * If ElevenLabs is configured, generates TTS audio first.
- * The audio is hosted temporarily via a TwiML Bin-style inline approach:
- * we use Twilio's <Say> with SSML or <Play> with a hosted URL.
- *
- * For simplicity and reliability, we use Twilio's TwiML <Say> as the
- * primary method, with ElevenLabs enhancement when available via a
- * temporary media upload.
+ * Falls back to one-way TTS if Conversational AI is unavailable.
  */
 export async function callCEO(
   agentName: string,
@@ -127,33 +283,49 @@ export async function callCEO(
 ): Promise<CallResult | null> {
   if (!isConfigured()) return null;
 
+  // Map agent name to agent ID
+  const agentId = agentName.toLowerCase() === "system" ? "coo" : agentName.toLowerCase();
+
+  // Try two-way conversational AI first
+  if (isConversationalAIReady()) {
+    const result = await callCEOConversational(agentId, message);
+    if (result) return result;
+    console.warn("[voice] Conversational AI failed, falling back to one-way TTS");
+  }
+
+  // Fallback: one-way TTS
+  return callCEOOneWay(agentName, message);
+}
+
+/**
+ * Two-way conversational AI call via Twilio Media Streams + ElevenLabs.
+ */
+async function callCEOConversational(
+  agentId: string,
+  initialMessage: string
+): Promise<CallResult | null> {
   try {
-    // Build TwiML for the call
-    let twiml: string;
+    // Ensure WebSocket bridge server is running
+    startMediaStreamServer();
 
-    // Try ElevenLabs TTS first
-    const audioBuffer = await generateSpeech(message);
+    // Get or create the ElevenLabs Conversational AI agent
+    const agent = await getAgent(agentId);
+    const systemPrompt = agent?.systemPrompt || `You are the ${agentId} assistant.`;
+    const firstMessage = `Hello Crevita, this is your ${agent?.name || agentId} agent. ${initialMessage}`;
 
-    if (audioBuffer) {
-      // Upload audio to Twilio as a media resource and play it
-      const mediaUrl = await uploadTwilioMedia(audioBuffer);
-      if (mediaUrl) {
-        twiml =
-          `<Response>` +
-          `<Say voice="Polly.Joanna">Message from your ${agentName} agent.</Say>` +
-          `<Pause length="1"/>` +
-          `<Play>${mediaUrl}</Play>` +
-          `<Pause length="1"/>` +
-          `<Say voice="Polly.Joanna">End of message. Goodbye.</Say>` +
-          `</Response>`;
-      } else {
-        // Fallback to Twilio TTS
-        twiml = buildSayTwiml(agentName, message);
-      }
-    } else {
-      // No ElevenLabs — use Twilio's built-in TTS
-      twiml = buildSayTwiml(agentName, message);
-    }
+    const elAgentId = await getOrCreateAgent(agentId, systemPrompt, firstMessage);
+
+    // Build TwiML that connects to our WebSocket bridge
+    const wsUrl = `wss://${WS_PUBLIC_HOST}:${WS_PORT}/media-stream?agent=${encodeURIComponent(agentId)}&el_agent_id=${encodeURIComponent(elAgentId)}`;
+
+    const twiml =
+      `<Response>` +
+      `<Connect>` +
+      `<Stream url="${escapeXml(wsUrl)}">` +
+      `<Parameter name="agentId" value="${escapeXml(agentId)}" />` +
+      `</Stream>` +
+      `</Connect>` +
+      `</Response>`;
 
     // Place the call
     const form = new URLSearchParams();
@@ -175,7 +347,7 @@ export async function callCEO(
 
     if (!res.ok) {
       const errBody = await res.text();
-      console.error(`Twilio call error: ${res.status} ${errBody}`);
+      console.error(`[voice] Twilio call error: ${res.status} ${errBody}`);
       return null;
     }
 
@@ -185,66 +357,162 @@ export async function callCEO(
       status: data.status,
       to: data.to,
       from: data.from,
-      provider: audioBuffer ? "elevenlabs+twilio" : "twilio",
+      provider: "conversational-ai",
+      mode: "two-way",
     };
   } catch (e: any) {
-    console.error("Voice call error:", e.message);
+    console.error("[voice] Conversational AI call error:", e.message);
     return null;
   }
 }
 
+// ============================================================
+// FALLBACK: ONE-WAY TTS CALL
+// ============================================================
+
 /**
- * Build TwiML using Twilio's built-in <Say> (fallback when ElevenLabs
- * is unavailable).
+ * One-way TTS call. Generates speech via ElevenLabs (or Twilio built-in)
+ * and plays it as a one-directional message.
  */
-function buildSayTwiml(agentName: string, message: string): string {
-  // Escape XML special characters
-  const escaped = message
+async function callCEOOneWay(
+  agentName: string,
+  message: string
+): Promise<CallResult | null> {
+  try {
+    let twiml: string;
+    let provider: "elevenlabs-tts" | "twilio-tts" = "twilio-tts";
+
+    // Try ElevenLabs TTS
+    const audioBuffer = await generateSpeech(message);
+    if (audioBuffer) {
+      const mediaUrl = await uploadTwilioMedia(audioBuffer);
+      if (mediaUrl) {
+        twiml =
+          `<Response>` +
+          `<Say voice="Polly.Joanna">Message from your ${escapeXml(agentName)} agent.</Say>` +
+          `<Pause length="1"/>` +
+          `<Play>${escapeXml(mediaUrl)}</Play>` +
+          `<Pause length="1"/>` +
+          `<Say voice="Polly.Joanna">End of message. Goodbye.</Say>` +
+          `</Response>`;
+        provider = "elevenlabs-tts";
+      } else {
+        twiml = buildSayTwiml(agentName, message);
+      }
+    } else {
+      twiml = buildSayTwiml(agentName, message);
+    }
+
+    const form = new URLSearchParams();
+    form.set("To", CEO_PHONE);
+    form.set("From", TWILIO_PHONE);
+    form.set("Twiml", twiml);
+
+    const res = await fetch(
+      `${TWILIO_API}/Accounts/${TWILIO_SID}/Calls.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: twilioAuth(),
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: form.toString(),
+      }
+    );
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error(`[voice] Twilio one-way call error: ${res.status} ${errBody}`);
+      return null;
+    }
+
+    const data = await res.json();
+    return {
+      callSid: data.sid,
+      status: data.status,
+      to: data.to,
+      from: data.from,
+      provider,
+      mode: "one-way",
+    };
+  } catch (e: any) {
+    console.error("[voice] One-way call error:", e.message);
+    return null;
+  }
+}
+
+// ============================================================
+// ELEVENLABS TTS (for one-way fallback)
+// ============================================================
+
+async function generateSpeech(text: string): Promise<Buffer | null> {
+  if (!ELEVENLABS_KEY) return null;
+
+  try {
+    const res = await fetch(
+      `${ELEVENLABS_API}/text-to-speech/21m00Tcm4TlvDq8ikWAM`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": ELEVENLABS_KEY,
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg",
+        },
+        body: JSON.stringify({
+          text,
+          model_id: "eleven_monolingual_v1",
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      console.error(`[voice] ElevenLabs TTS error: ${res.status}`);
+      return null;
+    }
+
+    return Buffer.from(await res.arrayBuffer());
+  } catch (e: any) {
+    console.error("[voice] ElevenLabs TTS error:", e.message);
+    return null;
+  }
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+function escapeXml(str: string): string {
+  return str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
 
+function buildSayTwiml(agentName: string, message: string): string {
   return (
     `<Response>` +
-    `<Say voice="Polly.Joanna">Message from your ${agentName} agent.</Say>` +
+    `<Say voice="Polly.Joanna">Message from your ${escapeXml(agentName)} agent.</Say>` +
     `<Pause length="1"/>` +
-    `<Say voice="Polly.Joanna">${escaped}</Say>` +
+    `<Say voice="Polly.Joanna">${escapeXml(message)}</Say>` +
     `<Pause length="1"/>` +
     `<Say voice="Polly.Joanna">End of message. Goodbye.</Say>` +
     `</Response>`
   );
 }
 
-/**
- * Upload audio buffer to Twilio as a temporary media resource.
- * Returns a URL that Twilio can play in a call.
- */
 async function uploadTwilioMedia(audio: Buffer): Promise<string | null> {
   try {
-    // Use Twilio's Media resource on the account
-    const form = new FormData();
-    const blob = new Blob([audio], { type: "audio/mpeg" });
-    form.append("MediaUrl", "data:audio/mpeg;base64," + audio.toString("base64"));
-
-    // Alternative: host via a simple base64 data URI won't work with Twilio.
-    // Instead, we create a temporary TwiML bin or use Twilio's recording storage.
-    // For now, we use a workaround: write to a temp file and serve it.
-    // In production, use Twilio Assets or an S3 bucket.
-
-    // Write audio to a temp file that the dashboard server can serve
-    const { writeFile } = await import("fs/promises");
+    const { writeFile, mkdir } = await import("fs/promises");
     const { join, dirname } = await import("path");
     const tempDir = join(dirname(dirname(import.meta.path)), "dashboard", "public");
-    const { mkdir } = await import("fs/promises");
     await mkdir(tempDir, { recursive: true });
 
     const filename = `call-audio-${Date.now()}.mp3`;
     const filepath = join(tempDir, filename);
     await writeFile(filepath, audio);
 
-    // Return the URL served by the dashboard
-    // The dashboard serves static files from dashboard/public/
     const dashboardPort = process.env.DASHBOARD_PORT || "3456";
     const tailscaleHost = process.env.TAILSCALE_HOSTNAME;
 
@@ -252,12 +520,10 @@ async function uploadTwilioMedia(audio: Buffer): Promise<string | null> {
       return `https://${tailscaleHost}:${dashboardPort}/public/${filename}`;
     }
 
-    // Local fallback — Twilio needs a publicly accessible URL
-    // In production, upload to S3/Cloudflare R2 instead
-    console.warn("Voice: No TAILSCALE_HOSTNAME set; ElevenLabs audio may not be accessible to Twilio");
+    console.warn("[voice] No TAILSCALE_HOSTNAME; ElevenLabs audio may not be accessible to Twilio");
     return null;
   } catch (e: any) {
-    console.error("Upload Twilio media error:", e.message);
+    console.error("[voice] Upload media error:", e.message);
     return null;
   }
 }
@@ -266,20 +532,14 @@ async function uploadTwilioMedia(audio: Buffer): Promise<string | null> {
 // CALL STATUS
 // ============================================================
 
-/**
- * Check the status of an existing call by SID.
- */
 export async function getCallStatus(callSid: string): Promise<any | null> {
   if (!isConfigured()) return null;
 
   try {
     const res = await fetch(
       `${TWILIO_API}/Accounts/${TWILIO_SID}/Calls/${callSid}.json`,
-      {
-        headers: { Authorization: twilioAuth() },
-      }
+      { headers: { Authorization: twilioAuth() } }
     );
-
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -291,18 +551,13 @@ export async function getCallStatus(callSid: string): Promise<any | null> {
 // HEALTH CHECK
 // ============================================================
 
-/**
- * Verify Twilio credentials by fetching the account info.
- */
 export async function checkStatus(): Promise<"ok" | "error" | "not configured"> {
   if (!isConfigured()) return "not configured";
 
   try {
     const res = await fetch(
       `${TWILIO_API}/Accounts/${TWILIO_SID}.json`,
-      {
-        headers: { Authorization: twilioAuth() },
-      }
+      { headers: { Authorization: twilioAuth() } }
     );
     if (!res.ok) return "error";
     const data = await res.json();
