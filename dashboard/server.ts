@@ -433,11 +433,17 @@ app.get("/health", async (c) => {
   const { checkStatus: heygenCheck } = await import("../src/utils/heygen.ts");
   integrations.heygen = await heygenCheck();
 
+  // X/Twitter (live API check)
+  const { checkStatus: twitterCheck, getPostsRemaining } = await import("../src/utils/twitter.ts");
+  integrations.twitter = await twitterCheck();
+  const twitterPostsRemaining = getPostsRemaining();
+
   return c.json({
     status: "ok",
     supabase: !!supabase,
     services: pm2Status,
     integrations,
+    twitterPostsRemaining,
     timestamp: new Date().toISOString(),
   });
 });
