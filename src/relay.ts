@@ -35,7 +35,7 @@ import {
 } from "./workflows/approval.ts";
 import { runAdHocMeeting } from "./meetings/adhoc.ts";
 import { callCEO, isConfigured as isVoiceConfigured, isConversationalAIReady, getActiveCallCount } from "./utils/voice.ts";
-import { postTweet } from "./utils/twitter.ts";
+import { postTweet, lastPostError } from "./utils/twitter.ts";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.path));
 
@@ -346,6 +346,8 @@ bot.on("callback_query:data", async (ctx) => {
           if (tweetResult) {
             const tweetUrl = `https://x.com/i/status/${tweetResult.id}`;
             await ctx.reply(`Tweet posted!\n${tweetUrl}`);
+          } else if (lastPostError === 503) {
+            await ctx.reply("X API is temporarily unavailable (503), tweet saved for retry.");
           } else {
             await ctx.reply("Tweet failed to post. Check X/Twitter configuration.");
           }

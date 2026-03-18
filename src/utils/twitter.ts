@@ -155,7 +155,15 @@ export interface MediaUploadResult {
  * Post a text tweet. ONLY call after CEO approval (Tier 2).
  * Checks monthly limit before posting.
  */
+// Tracks the last error status for callers that need to distinguish failure types
+export let lastPostError: number | null = null;
+
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 5000;
+
 export async function postTweet(text: string): Promise<TweetResult | null> {
+  lastPostError = null;
+
   if (!isConfigured()) {
     console.error("Twitter not configured");
     return null;
@@ -166,29 +174,45 @@ export async function postTweet(text: string): Promise<TweetResult | null> {
     return null;
   }
 
-  try {
-    const auth = buildAuthHeader("POST", TWEETS_API);
-    const res = await fetch(TWEETS_API, {
-      method: "POST",
-      headers: {
-        Authorization: auth,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ text }),
-    });
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const auth = buildAuthHeader("POST", TWEETS_API);
+      const res = await fetch(TWEETS_API, {
+        method: "POST",
+        headers: {
+          Authorization: auth,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text }),
+      });
 
-    if (!res.ok) {
-      console.error("Twitter postTweet error:", res.status, await res.text());
-      return null;
+      if (res.ok) {
+        const data = await res.json();
+        incrementCounter();
+        lastPostError = null;
+        return { id: data.data.id, text: data.data.text };
+      }
+
+      lastPostError = res.status;
+      const body = await res.text();
+      console.error(`Twitter postTweet error (attempt ${attempt}/${MAX_RETRIES}):`, res.status, body);
+
+      // Retry on 503, fail immediately on other errors
+      if (res.status !== 503 || attempt === MAX_RETRIES) {
+        return null;
+      }
+
+      console.log(`Retrying in ${RETRY_DELAY_MS / 1000}s...`);
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    } catch (e: any) {
+      console.error(`Twitter postTweet error (attempt ${attempt}/${MAX_RETRIES}):`, e.message);
+      lastPostError = 0;
+      if (attempt === MAX_RETRIES) return null;
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
     }
-
-    const data = await res.json();
-    incrementCounter();
-    return { id: data.data.id, text: data.data.text };
-  } catch (e: any) {
-    console.error("Twitter postTweet error:", e.message);
-    return null;
   }
+
+  return null;
 }
 
 // ============================================================
