@@ -338,21 +338,30 @@ bot.on("callback_query:data", async (ctx) => {
         }
       }
 
-      // Post tweet on CMO approval
-      if (task?.metadata?.task_type === "tweet" && task?.output) {
-        const tweetText = task.output;
-        try {
-          const tweetResult = await postTweet(tweetText);
-          if (tweetResult) {
-            const tweetUrl = `https://x.com/i/status/${tweetResult.id}`;
-            await ctx.reply(`Tweet posted!\n${tweetUrl}`);
-          } else if (lastPostError === 503) {
-            await ctx.reply("X API is temporarily unavailable (503), tweet saved for retry.");
-          } else {
-            await ctx.reply("Tweet failed to post. Check X/Twitter configuration.");
+      // Post tweet on CMO approval — only for CMO tweet tasks
+      if (task?.metadata?.task_type === "tweet" && task?.agent_id === "cmo" && task?.output) {
+        const tweetText = extractTweetText(task.output);
+        if (tweetText.length > 280) {
+          await ctx.reply(
+            `Tweet is ${tweetText.length} characters (limit 280). Please ask CMO to shorten it.\n\n` +
+            `Draft:\n${tweetText}`
+          );
+        } else if (tweetText.length === 0) {
+          await ctx.reply("Could not extract tweet text from CMO draft. Review manually with /approved");
+        } else {
+          try {
+            const tweetResult = await postTweet(tweetText);
+            if (tweetResult) {
+              const tweetUrl = `https://x.com/i/status/${tweetResult.id}`;
+              await ctx.reply(`Posted to X\n${tweetUrl}`);
+            } else if (lastPostError === 503) {
+              await ctx.reply("X API is temporarily unavailable (503), tweet saved for retry.");
+            } else {
+              await ctx.reply(`Tweet failed to post (error ${lastPostError}). Check X/Twitter configuration.`);
+            }
+          } catch (err: any) {
+            await ctx.reply(`Tweet error: ${err.message || err}`);
           }
-        } catch (err: any) {
-          await ctx.reply(`Tweet error: ${err.message || err}`);
         }
       }
     }
@@ -960,6 +969,43 @@ bot.on("message:document", async (ctx) => {
 // ============================================================
 // HELPERS
 // ============================================================
+
+/**
+ * Extract the actual tweet copy from a CMO agent's draft output.
+ * Strips preamble like "Here's a draft tweet:", quotation marks, and metadata.
+ */
+function extractTweetText(raw: string): string {
+  let text = raw.trim();
+
+  // If the output contains a quoted block, extract it
+  // Matches text wrapped in "..." or "..." (smart quotes)
+  const quotedMatch = text.match(/[\u201C"]([\s\S]+?)[\u201D"]/);
+  if (quotedMatch && quotedMatch[1].length <= 400) {
+    return quotedMatch[1].trim();
+  }
+
+  // Strip common preamble patterns (case-insensitive, multiline)
+  text = text
+    .replace(/^(?:here(?:'s| is) (?:a |the )?(?:draft |revised |updated )?(?:tweet|post|x post)[^:\n]*[:\n]\s*)/im, "")
+    .replace(/^(?:draft(?:\s+tweet)?[:\s]*)/im, "")
+    .replace(/^(?:tweet[:\s]*)/im, "")
+    .trim();
+
+  // Strip trailing metadata lines (e.g., "Character count: 142", "---", hashtag suggestions after a separator)
+  text = text
+    .replace(/\n---[\s\S]*$/m, "")
+    .replace(/\n(?:character count|chars?|length)[:\s]*\d+.*$/im, "")
+    .replace(/\n\n(?:notes?|suggestions?|alternatives?)[:\s]*[\s\S]*$/im, "")
+    .trim();
+
+  // Remove wrapping quotes if the entire result is quoted
+  if ((text.startsWith('"') && text.endsWith('"')) ||
+      (text.startsWith('\u201C') && text.endsWith('\u201D'))) {
+    text = text.slice(1, -1).trim();
+  }
+
+  return text;
+}
 
 // Load profile once at startup
 let profileContext = "";
