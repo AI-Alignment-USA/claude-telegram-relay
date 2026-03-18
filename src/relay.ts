@@ -400,6 +400,73 @@ bot.on("message:text", async (ctx) => {
     return;
   }
 
+  // Check if this is a reply to a CMO tweet approval message — edit-and-post flow
+  if (supabase && ctx.message.reply_to_message) {
+    const repliedMsgId = ctx.message.reply_to_message.message_id;
+
+    // Look up whether the replied-to message is a pending tweet approval
+    const { data: approvalRow } = await supabase
+      .from("approvals")
+      .select("task_id, status")
+      .eq("telegram_message_id", repliedMsgId)
+      .eq("status", "pending")
+      .single();
+
+    if (approvalRow) {
+      const { data: task } = await supabase
+        .from("tasks")
+        .select("id, metadata, agent_id, status")
+        .eq("id", approvalRow.task_id)
+        .single();
+
+      if (task?.metadata?.task_type === "tweet" && task?.agent_id === "cmo") {
+        const tweetText = extractTweetText(text);
+
+        if (tweetText.length === 0) {
+          await ctx.reply("Could not extract tweet text from your reply.");
+          return;
+        }
+
+        if (tweetText.length > 280) {
+          await ctx.reply(
+            `Your edit is ${tweetText.length} characters (limit 280). Shorten and reply again.`
+          );
+          return;
+        }
+
+        try {
+          const tweetResult = await postTweet(tweetText);
+          if (tweetResult) {
+            const tweetUrl = `https://x.com/i/status/${tweetResult.id}`;
+
+            // Mark task and approval as completed
+            await supabase
+              .from("tasks")
+              .update({
+                status: "approved",
+                output: tweetText,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", task.id);
+            await supabase
+              .from("approvals")
+              .update({ status: "approved", resolved_at: new Date().toISOString() })
+              .eq("task_id", task.id);
+
+            await ctx.reply(`Posted to X (your edit)\n${tweetUrl}`);
+          } else if (lastPostError === 503) {
+            await ctx.reply("X API is temporarily unavailable (503). Try again shortly.");
+          } else {
+            await ctx.reply(`Tweet failed to post (error ${lastPostError}). Check X/Twitter configuration.`);
+          }
+        } catch (err: any) {
+          await ctx.reply(`Tweet error: ${err.message || err}`);
+        }
+        return;
+      }
+    }
+  }
+
   // Check if this is feedback for a "changes requested" task
   if (supabase) {
     const { data: pendingChanges } = await supabase
