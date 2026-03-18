@@ -35,6 +35,7 @@ import {
 } from "./workflows/approval.ts";
 import { runAdHocMeeting } from "./meetings/adhoc.ts";
 import { callCEO, isConfigured as isVoiceConfigured, isConversationalAIReady, getActiveCallCount } from "./utils/voice.ts";
+import { postTweet } from "./utils/twitter.ts";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.path));
 
@@ -306,7 +307,7 @@ bot.on("callback_query:data", async (ctx) => {
     if (action === "approve") {
       const { data: task } = await supabase
         .from("tasks")
-        .select("metadata")
+        .select("metadata, output, agent_id")
         .eq("id", taskId)
         .single();
 
@@ -334,6 +335,22 @@ bot.on("callback_query:data", async (ctx) => {
           );
         } else {
           await ctx.reply("Failed to place call. Check voice configuration.");
+        }
+      }
+
+      // Post tweet on CMO approval
+      if (task?.metadata?.task_type === "tweet" && task?.output) {
+        const tweetText = task.output;
+        try {
+          const tweetResult = await postTweet(tweetText);
+          if (tweetResult) {
+            const tweetUrl = `https://x.com/i/status/${tweetResult.id}`;
+            await ctx.reply(`Tweet posted!\n${tweetUrl}`);
+          } else {
+            await ctx.reply("Tweet failed to post. Check X/Twitter configuration.");
+          }
+        } catch (err: any) {
+          await ctx.reply(`Tweet error: ${err.message || err}`);
         }
       }
     }
@@ -529,6 +546,14 @@ async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
   // Create task record
   let taskId: string | undefined;
   if (supabase) {
+    // Detect tweet tasks from CMO
+    const lowerMsg = message.toLowerCase();
+    const isTweet = agent.id === "cmo" && (
+      lowerMsg.includes("tweet") ||
+      lowerMsg.includes("post") ||
+      lowerMsg.includes("draft")
+    );
+
     const { data } = await supabase
       .from("tasks")
       .insert({
@@ -538,6 +563,7 @@ async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
         status: "in_progress",
         title: message.substring(0, 100),
         input: message,
+        ...(isTweet ? { metadata: { task_type: "tweet" } } : {}),
       })
       .select("id")
       .single();
