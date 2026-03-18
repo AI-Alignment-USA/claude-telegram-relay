@@ -82,6 +82,10 @@ export interface CreateEventInput {
   location?: string;
   description?: string;
   allDay?: boolean;
+  reminders?: {
+    useDefault: boolean;
+    overrides?: Array<{ method: "email" | "popup"; minutes: number }>;
+  };
 }
 
 export interface CreateEventResult {
@@ -186,6 +190,15 @@ export async function createEvent(input: CreateEventInput): Promise<CreateEventR
   } else {
     body.start = { dateTime: input.startTime, timeZone: "America/Los_Angeles" };
     body.end = { dateTime: input.endTime, timeZone: "America/Los_Angeles" };
+  }
+
+  if (input.reminders) {
+    body.reminders = {
+      useDefault: input.reminders.useDefault,
+      ...(input.reminders.overrides && { overrides: input.reminders.overrides }),
+    };
+  } else {
+    body.reminders = { useDefault: true };
   }
 
   try {
