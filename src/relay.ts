@@ -362,7 +362,20 @@ bot.on("callback_query:data", async (ctx) => {
               const tweetUrl = `https://x.com/i/status/${tweetResult.id}`;
               await ctx.reply(`Posted to X\n${tweetUrl}`);
             } else if (lastPostError === 503) {
-              await ctx.reply("X API is temporarily unavailable (503), tweet saved for retry.");
+              // Save approved tweet and notify — X API is down (known issue since Feb 2026)
+              await supabase
+                .from("tasks")
+                .update({
+                  status: "pending_post",
+                  metadata: { ...task.metadata, approved_tweet_text: tweetText, failed_at: new Date().toISOString() },
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", taskId);
+              await ctx.reply(
+                `X API is down (503 after 3 retries). Approved tweet saved.\n\n` +
+                `Tweet text:\n${tweetText}\n\n` +
+                `Post manually or trigger Chrome automation when the API recovers.`
+              );
             } else {
               await ctx.reply(`Tweet failed to post (error ${lastPostError}). Check X/Twitter configuration.`);
             }
@@ -473,7 +486,25 @@ bot.on("message:text", async (ctx) => {
 
             await ctx.reply(`Posted to X (your edit)\n${tweetUrl}`);
           } else if (lastPostError === 503) {
-            await ctx.reply("X API is temporarily unavailable (503). Try again shortly.");
+            // Save edited tweet and notify — X API is down
+            await supabase
+              .from("tasks")
+              .update({
+                status: "pending_post",
+                output: tweetText,
+                metadata: { ...task.metadata, approved_tweet_text: tweetText, failed_at: new Date().toISOString() },
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", task.id);
+            await supabase
+              .from("approvals")
+              .update({ status: "approved", resolved_at: new Date().toISOString() })
+              .eq("task_id", task.id);
+            await ctx.reply(
+              `X API is down (503 after 3 retries). Your edited tweet saved.\n\n` +
+              `Tweet text:\n${tweetText}\n\n` +
+              `Post manually or trigger Chrome automation when the API recovers.`
+            );
           } else {
             await ctx.reply(`Tweet failed to post (error ${lastPostError}). Check X/Twitter configuration.`);
           }
