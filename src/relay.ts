@@ -36,6 +36,11 @@ import {
 import { runAdHocMeeting } from "./meetings/adhoc.ts";
 import { callCEO, isConfigured as isVoiceConfigured, isConversationalAIReady, getActiveCallCount } from "./utils/voice.ts";
 import { postTweet, lastPostError } from "./utils/twitter.ts";
+import {
+  startVideoRender,
+  startVideoPoller,
+  stopVideoPoller,
+} from "./workflows/video-pipeline.ts";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.path));
 
@@ -120,10 +125,12 @@ process.on("exit", () => {
   } catch {}
 });
 process.on("SIGINT", async () => {
+  stopVideoPoller();
   await releaseLock();
   process.exit(0);
 });
 process.on("SIGTERM", async () => {
+  stopVideoPoller();
   await releaseLock();
   process.exit(0);
 });
@@ -363,6 +370,17 @@ bot.on("callback_query:data", async (ctx) => {
             await ctx.reply(`Tweet error: ${err.message || err}`);
           }
         }
+      }
+
+      // Start video render on video_post approval
+      if (task?.metadata?.task_type === "video_post" && task?.output) {
+        await startVideoRender({
+          bot,
+          supabase,
+          taskId,
+          taskOutput: task.output,
+          taskMetadata: task.metadata || {},
+        });
       }
     }
 
@@ -632,6 +650,15 @@ async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
       lowerMsg.includes("draft")
     );
 
+    // Detect video post tasks from CMO or Head of Content
+    const isVideoPost =
+      (agent.id === "cmo" || agent.id === "head-content") &&
+      (lowerMsg.includes("video post") ||
+       lowerMsg.includes("video_post") ||
+       lowerMsg.includes("video script") ||
+       lowerMsg.includes("record a video") ||
+       lowerMsg.includes("make a video"));
+
     const { data } = await supabase
       .from("tasks")
       .insert({
@@ -641,7 +668,9 @@ async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
         status: "in_progress",
         title: message.substring(0, 100),
         input: message,
-        ...(isTweet ? { metadata: { task_type: "tweet" } } : {}),
+        ...(isVideoPost ? { metadata: { task_type: "video_post" } }
+          : isTweet ? { metadata: { task_type: "tweet" } }
+          : {}),
       })
       .select("id")
       .single();
@@ -721,7 +750,7 @@ async function handleWorkflowCommand(
     const { data: tasks } = await supabase
       .from("tasks")
       .select("agent_id, status, title, created_at")
-      .in("status", ["pending", "in_progress", "awaiting_coo", "awaiting_approval"])
+      .in("status", ["pending", "in_progress", "awaiting_coo", "awaiting_approval", "rendering"])
       .order("created_at", { ascending: false })
       .limit(10);
 
@@ -1173,5 +1202,8 @@ console.log(`Project directory: ${PROJECT_DIR || "(relay working directory)"}`);
 bot.start({
   onStart: () => {
     console.log("Bot is running!");
+    if (supabase) {
+      startVideoPoller(bot, supabase);
+    }
   },
 });
