@@ -149,6 +149,16 @@ module.exports = {
       cron_restart: "0 9 * * 6",
       watch: false,
     },
+    {
+      name: "polymarket-checkin",
+      script: "polymarket-checkin.cjs",
+      cwd: __dirname,
+      out_file: "logs/polymarket-checkin.log",
+      error_file: "logs/polymarket-checkin.error.log",
+      autorestart: false,
+      cron_restart: "0 18 * * 0",
+      watch: false,
+    },
 
     // ============================================================
     // SMART CHECK-IN (existing)
