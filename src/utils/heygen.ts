@@ -69,6 +69,28 @@ export interface QuotaInfo {
   videoMinutes: number;
 }
 
+export interface CreateVideoAgentInput {
+  title?: string;
+  prompt: string;
+  aspectRatio?: "16:9" | "9:16" | "1:1";
+  duration?: number;
+}
+
+export interface VideoAgentStatus {
+  videoId: string;
+  status: "pending" | "waiting" | "processing" | "completed" | "failed";
+  videoUrl?: string;
+  thumbnailUrl?: string;
+  duration?: number;
+  error?: string;
+}
+
+export interface CreditUsage {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
 // ============================================================
 // LIST: Avatars
 // ============================================================
@@ -241,6 +263,149 @@ export async function getRemainingQuota(): Promise<QuotaInfo | null> {
     };
   } catch {
     return null;
+  }
+}
+
+// ============================================================
+// VIDEO AGENT: Prompt-driven video generation with B-roll
+// ============================================================
+
+/**
+ * Create a Video Agent video. Returns video_id for status polling.
+ * Use for supplementary content: explainers, data visualizations, walkthroughs.
+ */
+export async function createVideoAgent(input: CreateVideoAgentInput): Promise<string | null> {
+  if (!API_KEY) return null;
+
+  const body: any = {
+    title: input.title || "Playhouse STEM Video",
+    prompt: input.prompt,
+  };
+
+  if (input.aspectRatio) body.aspect_ratio = input.aspectRatio;
+  if (input.duration) body.duration = input.duration;
+
+  try {
+    const res = await fetch(`${BASE_V2}/video_agent/create`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("HeyGen createVideoAgent error:", res.status, errText);
+      return null;
+    }
+
+    const data = await res.json();
+    return data.data?.video_id || null;
+  } catch (e: any) {
+    console.error("HeyGen createVideoAgent error:", e.message);
+    return null;
+  }
+}
+
+/**
+ * Check Video Agent rendering status. Same polling pattern as avatar videos.
+ */
+export async function getVideoAgentStatus(videoId: string): Promise<VideoAgentStatus | null> {
+  if (!API_KEY) return null;
+
+  try {
+    const res = await fetch(
+      `${BASE_V2}/video_agent/status?video_id=${encodeURIComponent(videoId)}`,
+      { headers: headers() }
+    );
+
+    if (!res.ok) {
+      console.error("HeyGen getVideoAgentStatus error:", res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    const d = data.data;
+
+    return {
+      videoId: d.id || videoId,
+      status: d.status || "pending",
+      videoUrl: d.video_url || undefined,
+      thumbnailUrl: d.thumbnail_url || undefined,
+      duration: d.duration || undefined,
+      error: d.error || undefined,
+    };
+  } catch (e: any) {
+    console.error("HeyGen getVideoAgentStatus error:", e.message);
+    return null;
+  }
+}
+
+// ============================================================
+// CREDIT TRACKING: 10 free API credits/month
+// ============================================================
+
+const MONTHLY_CREDIT_LIMIT = 10;
+
+/**
+ * Get current API credit usage. Uses getRemainingQuota() first,
+ * falls back to local Supabase tracking if API doesn't expose credit count.
+ */
+export async function getApiCreditUsage(supabase?: any): Promise<CreditUsage> {
+  const quota = await getRemainingQuota();
+  if (quota && quota.videoMinutes > 0) {
+    const used = MONTHLY_CREDIT_LIMIT - Math.min(MONTHLY_CREDIT_LIMIT, Math.floor(quota.videoMinutes));
+    return { used, limit: MONTHLY_CREDIT_LIMIT, remaining: MONTHLY_CREDIT_LIMIT - used };
+  }
+
+  if (!supabase) return { used: 0, limit: MONTHLY_CREDIT_LIMIT, remaining: MONTHLY_CREDIT_LIMIT };
+
+  const now = new Date();
+  const creditKey = `heygen_credits_${now.getUTCFullYear()}_${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+
+  const { data } = await supabase
+    .from("memory")
+    .select("id, metadata")
+    .eq("type", "fact")
+    .eq("content", creditKey)
+    .single();
+
+  const used = data?.metadata?.used || 0;
+  return { used, limit: MONTHLY_CREDIT_LIMIT, remaining: MONTHLY_CREDIT_LIMIT - used };
+}
+
+/**
+ * Check if we have budget for another render. Call before every HeyGen render.
+ */
+export async function checkCreditBudget(supabase?: any): Promise<{ allowed: boolean; remaining: number }> {
+  const usage = await getApiCreditUsage(supabase);
+  return { allowed: usage.remaining > 0, remaining: usage.remaining };
+}
+
+/**
+ * Increment the local credit counter after a successful render.
+ */
+export async function incrementCreditUsage(supabase: any): Promise<void> {
+  const now = new Date();
+  const creditKey = `heygen_credits_${now.getUTCFullYear()}_${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+
+  const { data: existing } = await supabase
+    .from("memory")
+    .select("id, metadata")
+    .eq("type", "fact")
+    .eq("content", creditKey)
+    .single();
+
+  const newUsed = (existing?.metadata?.used || 0) + 1;
+
+  if (existing) {
+    await supabase
+      .from("memory")
+      .update({ metadata: { used: newUsed, limit: MONTHLY_CREDIT_LIMIT }, updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+  } else {
+    await supabase
+      .from("memory")
+      .insert({ type: "fact", content: creditKey, metadata: { used: newUsed, limit: MONTHLY_CREDIT_LIMIT } });
   }
 }
 
