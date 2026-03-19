@@ -569,6 +569,12 @@ bot.on("message:text", async (ctx) => {
     }
   }
 
+  // Handle dashboard commands (/product, /content, /issue)
+  if (isDashboardCommand(text)) {
+    await handleDashboardCommand(ctx, text);
+    return;
+  }
+
   // Handle workflow commands (/status, /costs, /approve)
   if (isWorkflowCommand(text)) {
     await handleWorkflowCommand(ctx, text);
@@ -805,6 +811,256 @@ async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
 
   const header = `*[${agent.name}]*\n\n`;
   await sendResponse(ctx, header + result.response);
+}
+
+// ============================================================
+// DASHBOARD COMMANDS (/product, /content, /issue)
+// ============================================================
+
+const DASHBOARD_COMMANDS = ["/product", "/content", "/issue"];
+
+function isDashboardCommand(text: string): boolean {
+  const cmd = text.split(" ")[0].toLowerCase();
+  return DASHBOARD_COMMANDS.includes(cmd);
+}
+
+async function handleDashboardCommand(
+  ctx: Context,
+  text: string
+): Promise<void> {
+  if (!supabase) {
+    await ctx.reply("Supabase not configured.");
+    return;
+  }
+
+  const parts = text.split(" ");
+  const cmd = parts[0].toLowerCase();
+  const action = parts[1]?.toLowerCase();
+
+  // /product update [name] [status] [notes]
+  if (cmd === "/product") {
+    if (action !== "update" || parts.length < 4) {
+      await ctx.reply(
+        "Usage: /product update [name] [status] [notes]\n\n" +
+        "Status: Live, Draft, Planned, Blocked\n" +
+        "Example: /product update \"My Course\" Live Great launch!"
+      );
+      return;
+    }
+
+    // Parse: support quoted product names
+    const rest = text.substring("/product update ".length).trim();
+    let productName: string;
+    let remainder: string;
+
+    if (rest.startsWith('"')) {
+      const endQuote = rest.indexOf('"', 1);
+      if (endQuote === -1) {
+        await ctx.reply("Missing closing quote for product name.");
+        return;
+      }
+      productName = rest.substring(1, endQuote);
+      remainder = rest.substring(endQuote + 1).trim();
+    } else {
+      const spaceIdx = rest.indexOf(" ");
+      if (spaceIdx === -1) {
+        await ctx.reply("Usage: /product update [name] [status] [notes]");
+        return;
+      }
+      productName = rest.substring(0, spaceIdx);
+      remainder = rest.substring(spaceIdx + 1).trim();
+    }
+
+    const statusParts = remainder.split(" ");
+    const newStatus = statusParts[0];
+    const notes = statusParts.slice(1).join(" ") || null;
+
+    if (!["Live", "Draft", "Planned", "Blocked"].includes(newStatus)) {
+      await ctx.reply("Invalid status. Use: Live, Draft, Planned, or Blocked");
+      return;
+    }
+
+    const { data: existing } = await supabase
+      .from("products")
+      .select("id")
+      .ilike("name", productName)
+      .limit(1)
+      .single();
+
+    if (existing) {
+      await supabase
+        .from("products")
+        .update({ status: newStatus, notes, updated_at: new Date().toISOString() })
+        .eq("id", existing.id);
+      await ctx.reply(`Updated "${productName}" → ${newStatus}${notes ? ` (${notes})` : ""}`);
+    } else {
+      await ctx.reply(`Product "${productName}" not found. Check spelling or add it via the dashboard.`);
+    }
+    return;
+  }
+
+  // /content add [title] [type] [platform]
+  // /content move [id] [new_status]
+  if (cmd === "/content") {
+    if (action === "add") {
+      const rest = text.substring("/content add ".length).trim();
+      const contentParts = rest.split(" ");
+      if (contentParts.length < 3) {
+        await ctx.reply(
+          "Usage: /content add [title] [type] [platform]\n\n" +
+          "Type: video, post, blog\n" +
+          "Example: /content add \"Weekly Recap\" video YouTube"
+        );
+        return;
+      }
+
+      let title: string;
+      let afterTitle: string;
+
+      if (rest.startsWith('"')) {
+        const endQuote = rest.indexOf('"', 1);
+        if (endQuote === -1) {
+          await ctx.reply("Missing closing quote for title.");
+          return;
+        }
+        title = rest.substring(1, endQuote);
+        afterTitle = rest.substring(endQuote + 1).trim();
+      } else {
+        // Single-word title
+        title = contentParts[0];
+        afterTitle = contentParts.slice(1).join(" ");
+      }
+
+      const afterParts = afterTitle.split(" ");
+      const contentType = afterParts[0]?.toLowerCase();
+      const platform = afterParts.slice(1).join(" ") || afterParts[1] || "Unknown";
+
+      if (!["video", "post", "blog"].includes(contentType)) {
+        await ctx.reply("Invalid type. Use: video, post, or blog");
+        return;
+      }
+
+      await supabase.from("content_pipeline").insert({
+        title,
+        type: contentType,
+        platform,
+        status: "Idea",
+      });
+      await ctx.reply(`Added to content pipeline: "${title}" (${contentType} on ${platform})`);
+    } else if (action === "move") {
+      const contentId = parts[2];
+      const newStatus = parts[3];
+
+      if (!contentId || !newStatus) {
+        await ctx.reply(
+          "Usage: /content move [id] [new_status]\n\n" +
+          "Status: Idea, Draft, Approved, Published"
+        );
+        return;
+      }
+
+      if (!["Idea", "Draft", "Approved", "Published"].includes(newStatus)) {
+        await ctx.reply("Invalid status. Use: Idea, Draft, Approved, or Published");
+        return;
+      }
+
+      const { error } = await supabase
+        .from("content_pipeline")
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq("id", contentId);
+
+      if (error) {
+        await ctx.reply(`Error moving content: ${error.message}`);
+      } else {
+        await ctx.reply(`Content moved to ${newStatus}`);
+      }
+    } else {
+      await ctx.reply(
+        "Usage:\n" +
+        "  /content add [title] [type] [platform]\n" +
+        "  /content move [id] [new_status]"
+      );
+    }
+    return;
+  }
+
+  // /issue add [title] [severity] [notes]
+  // /issue resolve [id]
+  if (cmd === "/issue") {
+    if (action === "add") {
+      const rest = text.substring("/issue add ".length).trim();
+      if (!rest) {
+        await ctx.reply(
+          "Usage: /issue add [title] [severity] [notes]\n\n" +
+          "Severity: Critical, Warning, Info\n" +
+          "Example: /issue add \"Twitter API down\" Critical Returning 503 errors"
+        );
+        return;
+      }
+
+      let title: string;
+      let afterTitle: string;
+
+      if (rest.startsWith('"')) {
+        const endQuote = rest.indexOf('"', 1);
+        if (endQuote === -1) {
+          await ctx.reply("Missing closing quote for title.");
+          return;
+        }
+        title = rest.substring(1, endQuote);
+        afterTitle = rest.substring(endQuote + 1).trim();
+      } else {
+        const spaceIdx = rest.indexOf(" ");
+        if (spaceIdx === -1) {
+          title = rest;
+          afterTitle = "";
+        } else {
+          title = rest.substring(0, spaceIdx);
+          afterTitle = rest.substring(spaceIdx + 1).trim();
+        }
+      }
+
+      const afterParts = afterTitle.split(" ");
+      let severity = afterParts[0] || "Warning";
+      const notes = afterParts.slice(1).join(" ") || null;
+
+      if (!["Critical", "Warning", "Info"].includes(severity)) {
+        // Treat as notes if not a valid severity
+        severity = "Warning";
+      }
+
+      await supabase.from("known_issues").insert({
+        title,
+        severity,
+        notes: afterTitle && !["Critical", "Warning", "Info"].includes(afterParts[0]) ? afterTitle : notes,
+      });
+      await ctx.reply(`Issue created: "${title}" [${severity}]`);
+    } else if (action === "resolve") {
+      const issueId = parts[2];
+      if (!issueId) {
+        await ctx.reply("Usage: /issue resolve [id]");
+        return;
+      }
+
+      const { error } = await supabase
+        .from("known_issues")
+        .update({ status: "Fixed", resolved_at: new Date().toISOString() })
+        .eq("id", issueId);
+
+      if (error) {
+        await ctx.reply(`Error resolving issue: ${error.message}`);
+      } else {
+        await ctx.reply("Issue marked as Fixed.");
+      }
+    } else {
+      await ctx.reply(
+        "Usage:\n" +
+        "  /issue add [title] [severity] [notes]\n" +
+        "  /issue resolve [id]"
+      );
+    }
+    return;
+  }
 }
 
 // ============================================================

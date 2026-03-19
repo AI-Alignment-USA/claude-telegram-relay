@@ -11,6 +11,8 @@
  * Token scopes: gmail.readonly, gmail.send (already authorized)
  */
 
+import { logIntegrationCall } from "./integration-logger.ts";
+
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
 const REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN || "";
@@ -189,6 +191,7 @@ export async function searchEmails(
     });
 
     if (!listRes.ok) {
+      await logIntegrationCall("gmail", "system", "messages/search", "error", `${listRes.status}`);
       console.error("Gmail search error:", listRes.status);
       return [];
     }
@@ -196,7 +199,10 @@ export async function searchEmails(
     const listData = await listRes.json();
     const messageIds = (listData.messages || []).map((m: any) => m.id);
 
-    if (messageIds.length === 0) return [];
+    if (messageIds.length === 0) {
+      await logIntegrationCall("gmail", "system", "messages/search", "success");
+      return [];
+    }
 
     // Fetch each message with metadata
     const messages: GmailMessage[] = [];
@@ -210,8 +216,10 @@ export async function searchEmails(
       messages.push(parseMessage(msg));
     }
 
+    await logIntegrationCall("gmail", "system", "messages/search", "success");
     return messages;
   } catch (e: any) {
+    await logIntegrationCall("gmail", "system", "messages/search", "error", e.message);
     console.error("Gmail searchEmails error:", e.message);
     return [];
   }
@@ -230,12 +238,15 @@ export async function readEmail(messageId: string): Promise<GmailMessage | null>
     });
 
     if (!res.ok) {
+      await logIntegrationCall("gmail", "system", "messages/get", "error", `${res.status}`);
       console.error("Gmail readEmail error:", res.status);
       return null;
     }
 
+    await logIntegrationCall("gmail", "system", "messages/get", "success");
     return parseMessage(await res.json());
   } catch (e: any) {
+    await logIntegrationCall("gmail", "system", "messages/get", "error", e.message);
     console.error("Gmail readEmail error:", e.message);
     return null;
   }
@@ -287,10 +298,12 @@ export async function createDraft(input: DraftEmailInput): Promise<DraftEmailRes
     });
 
     if (!res.ok) {
+      await logIntegrationCall("gmail", "system", "drafts/create", "error", `${res.status}`);
       console.error("Gmail createDraft error:", res.status, await res.text());
       return null;
     }
 
+    await logIntegrationCall("gmail", "system", "drafts/create", "success");
     const draft = await res.json();
     return {
       draftId: draft.id,
@@ -298,6 +311,7 @@ export async function createDraft(input: DraftEmailInput): Promise<DraftEmailRes
       threadId: draft.message?.threadId || "",
     };
   } catch (e: any) {
+    await logIntegrationCall("gmail", "system", "drafts/create", "error", e.message);
     console.error("Gmail createDraft error:", e.message);
     return null;
   }
@@ -322,16 +336,19 @@ export async function sendDraft(draftId: string): Promise<SendResult | null> {
     });
 
     if (!res.ok) {
+      await logIntegrationCall("gmail", "system", "drafts/send", "error", `${res.status}`);
       console.error("Gmail sendDraft error:", res.status, await res.text());
       return null;
     }
 
+    await logIntegrationCall("gmail", "system", "drafts/send", "success");
     const sent = await res.json();
     return {
       messageId: sent.id || "",
       threadId: sent.threadId || "",
     };
   } catch (e: any) {
+    await logIntegrationCall("gmail", "system", "drafts/send", "error", e.message);
     console.error("Gmail sendDraft error:", e.message);
     return null;
   }

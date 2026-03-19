@@ -391,6 +391,168 @@ app.get("/security", async (c) => {
 });
 
 // ============================================================
+// INTEGRATION HEALTH
+// ============================================================
+
+app.get("/integrations", async (c) => {
+  if (!supabase) return c.text("Supabase not configured", 500);
+
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const [allCalls, recentCalls] = await Promise.all([
+    supabase
+      .from("integration_health")
+      .select("integration_name, status, error_message, created_at")
+      .gte("created_at", since24h)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("integration_health")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50),
+  ]);
+
+  const calls = allCalls.data || [];
+  const totalCalls = calls.length;
+  const errorCount = calls.filter((c: any) => c.status === "error").length;
+  const successRate = totalCalls > 0 ? Math.round(((totalCalls - errorCount) / totalCalls) * 100) : 100;
+
+  // Group by integration
+  const byIntegration = new Map<string, any>();
+  for (const call of calls) {
+    const name = call.integration_name;
+    if (!byIntegration.has(name)) {
+      byIntegration.set(name, {
+        integration_name: name,
+        last_status: call.status,
+        last_call: call.created_at,
+        last_error: call.status === "error" ? call.error_message : null,
+        total: 0,
+        successes: 0,
+      });
+    }
+    const entry = byIntegration.get(name)!;
+    entry.total++;
+    if (call.status === "success") entry.successes++;
+  }
+
+  return c.html(
+    await renderView("integrations", {
+      integrations: JSON.stringify(Array.from(byIntegration.values())),
+      recentCalls: JSON.stringify(recentCalls.data || []),
+      totalCalls,
+      successRate,
+      errorCount,
+      integrationCount: byIntegration.size,
+    })
+  );
+});
+
+// ============================================================
+// PRODUCT TRACKER
+// ============================================================
+
+app.get("/products", async (c) => {
+  if (!supabase) return c.text("Supabase not configured", 500);
+
+  const { data: products } = await supabase
+    .from("products")
+    .select("*")
+    .order("updated_at", { ascending: false });
+
+  const list = products || [];
+  const liveCount = list.filter((p: any) => p.status === "Live").length;
+  const draftCount = list.filter((p: any) => p.status === "Draft").length;
+  const blockedCount = list.filter((p: any) => p.status === "Blocked").length;
+
+  return c.html(
+    await renderView("products", {
+      products: JSON.stringify(list),
+      totalProducts: list.length,
+      liveCount,
+      draftCount,
+      blockedCount,
+    })
+  );
+});
+
+// ============================================================
+// CONTENT PIPELINE
+// ============================================================
+
+app.get("/content-pipeline", async (c) => {
+  if (!supabase) return c.text("Supabase not configured", 500);
+
+  const { data: content } = await supabase
+    .from("content_pipeline")
+    .select("*")
+    .order("updated_at", { ascending: false });
+
+  const list = content || [];
+  const ideaCount = list.filter((c: any) => c.status === "Idea").length;
+  const draftCount = list.filter((c: any) => c.status === "Draft").length;
+  const publishedCount = list.filter((c: any) => c.status === "Published").length;
+
+  return c.html(
+    await renderView("content-pipeline", {
+      content: JSON.stringify(list),
+      totalContent: list.length,
+      ideaCount,
+      draftCount,
+      publishedCount,
+    })
+  );
+});
+
+// ============================================================
+// ISSUE TRACKER
+// ============================================================
+
+app.get("/issues", async (c) => {
+  if (!supabase) return c.text("Supabase not configured", 500);
+
+  const { data: issues } = await supabase
+    .from("known_issues")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  const list = issues || [];
+  const openIssues = list.filter((i: any) => i.status !== "Fixed");
+  const criticalCount = openIssues.filter((i: any) => i.severity === "Critical").length;
+  const warningCount = openIssues.filter((i: any) => i.severity === "Warning").length;
+  const openCount = openIssues.length;
+  const fixedCount = list.filter((i: any) => i.status === "Fixed").length;
+
+  return c.html(
+    await renderView("issues", {
+      issues: JSON.stringify(list),
+      criticalCount,
+      warningCount,
+      openCount,
+      fixedCount,
+    })
+  );
+});
+
+// Issue API for CISO auto-populate
+app.post("/api/issues", async (c) => {
+  if (!supabase) return c.json({ error: "No DB" }, 500);
+  const body = await c.req.json();
+  const { data, error } = await supabase
+    .from("known_issues")
+    .insert({
+      title: body.title,
+      severity: body.severity || "Warning",
+      assigned_agent: body.assigned_agent || "ciso",
+      notes: body.notes || null,
+    })
+    .select()
+    .single();
+  if (error) return c.json({ error: error.message }, 400);
+  return c.json(data);
+});
+
+// ============================================================
 // HEALTH CHECK
 // ============================================================
 

@@ -131,6 +131,20 @@ async function nightlyPatrol(): Promise<void> {
 
   console.log(`Inspection complete: ${targetId} scored ${result.score}/100`);
 
+  // Auto-populate known_issues from CISO findings
+  if (!result.passed && supabase) {
+    const targetAgent = await getAgent(targetId);
+    const agentName = targetAgent?.name || targetId;
+    const severity = result.score < 50 ? "Critical" : "Warning";
+    await supabase.from("known_issues").insert({
+      title: `CISO patrol: ${agentName} failed inspection (score ${result.score}/100)`,
+      status: "Open",
+      severity,
+      assigned_agent: "ciso",
+      notes: result.findings.substring(0, 500),
+    });
+  }
+
   // If agent failed inspection, quarantine it and submit patch for approval
   if (!result.passed) {
     console.log(`Issues found for ${targetId}, quarantining agent.`);

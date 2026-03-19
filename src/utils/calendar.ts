@@ -14,6 +14,8 @@
  * Current token scopes: calendar (full read/write), gmail.readonly, gmail.send
  */
 
+import { logIntegrationCall } from "./integration-logger.ts";
+
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
 const REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN || "";
@@ -115,10 +117,12 @@ async function fetchEvents(timeMin: string, timeMax: string, maxResults: number 
     );
 
     if (!res.ok) {
+      await logIntegrationCall("google_calendar", "system", "events/list", "error", `${res.status}`);
       console.error("Calendar API error:", res.status, await res.text());
       return null;
     }
 
+    await logIntegrationCall("google_calendar", "system", "events/list", "success");
     const data = await res.json();
     return (data.items || []).map((item: any) => ({
       id: item.id,
@@ -130,6 +134,7 @@ async function fetchEvents(timeMin: string, timeMax: string, maxResults: number 
       description: item.description || undefined,
     }));
   } catch (e: any) {
+    await logIntegrationCall("google_calendar", "system", "events/list", "error", e.message);
     console.error("Calendar fetch failed:", e.message);
     return null;
   }
@@ -214,6 +219,7 @@ export async function createEvent(input: CreateEventInput): Promise<CreateEventR
 
     if (!res.ok) {
       const errText = await res.text();
+      await logIntegrationCall("google_calendar", "system", "events/create", "error", `${res.status}: ${errText}`);
       console.error("Calendar create event error:", res.status, errText);
       if (res.status === 403) {
         console.error("Hint: re-run get-google-token.ts with calendar.events scope");
@@ -221,6 +227,7 @@ export async function createEvent(input: CreateEventInput): Promise<CreateEventR
       return null;
     }
 
+    await logIntegrationCall("google_calendar", "system", "events/create", "success");
     const event = await res.json();
     return {
       id: event.id,
@@ -228,6 +235,7 @@ export async function createEvent(input: CreateEventInput): Promise<CreateEventR
       url: event.htmlLink || "",
     };
   } catch (e: any) {
+    await logIntegrationCall("google_calendar", "system", "events/create", "error", e.message);
     console.error("Calendar createEvent failed:", e.message);
     return null;
   }

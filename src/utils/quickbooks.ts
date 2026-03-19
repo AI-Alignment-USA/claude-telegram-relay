@@ -11,6 +11,8 @@
  * On each refresh, the new refresh token is cached in memory.
  */
 
+import { logIntegrationCall } from "./integration-logger.ts";
+
 const CLIENT_ID = process.env.QBO_CLIENT_ID || "";
 const CLIENT_SECRET = process.env.QBO_CLIENT_SECRET || "";
 const REALM_ID = process.env.QBO_REALM_ID || "";
@@ -124,9 +126,11 @@ async function qboGet(endpoint: string): Promise<any> {
 
   if (!res.ok) {
     const text = await res.text();
+    await logIntegrationCall("quickbooks", "system", endpoint, "error", `${res.status}: ${text}`);
     throw new Error(`QBO API ${res.status}: ${text}`);
   }
 
+  await logIntegrationCall("quickbooks", "system", endpoint, "success");
   return res.json();
 }
 
@@ -144,9 +148,11 @@ async function qboQuery(query: string): Promise<any[]> {
 
   if (!res.ok) {
     const text = await res.text();
+    await logIntegrationCall("quickbooks", "system", "query", "error", `${res.status}: ${text}`);
     throw new Error(`QBO query error ${res.status}: ${text}`);
   }
 
+  await logIntegrationCall("quickbooks", "system", "query", "success");
   const data = await res.json();
   const response = data.QueryResponse || {};
   // QBO returns the entity type as a key (e.g., "Invoice", "Purchase")
@@ -173,9 +179,11 @@ async function qboReport(reportName: string, params: Record<string, string> = {}
 
   if (!res.ok) {
     const text = await res.text();
+    await logIntegrationCall("quickbooks", "system", `reports/${reportName}`, "error", `${res.status}: ${text}`);
     throw new Error(`QBO report error ${res.status}: ${text}`);
   }
 
+  await logIntegrationCall("quickbooks", "system", `reports/${reportName}`, "success");
   return res.json();
 }
 

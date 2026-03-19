@@ -12,6 +12,8 @@
  *   3. Add GUMROAD_ACCESS_TOKEN to .env
  */
 
+import { logIntegrationCall } from "./integration-logger.ts";
+
 const TOKEN = process.env.GUMROAD_ACCESS_TOKEN || "";
 const BASE_URL = "https://api.gumroad.com/v2";
 
@@ -33,9 +35,16 @@ async function gumroadGet(endpoint: string, params?: Record<string, string>): Pr
   }
 
   const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Gumroad API ${res.status}: ${res.statusText}`);
+  if (!res.ok) {
+    await logIntegrationCall("gumroad", "system", endpoint, "error", `${res.status}: ${res.statusText}`);
+    throw new Error(`Gumroad API ${res.status}: ${res.statusText}`);
+  }
   const data = await res.json();
-  if (!data.success) throw new Error(`Gumroad API error: ${JSON.stringify(data)}`);
+  if (!data.success) {
+    await logIntegrationCall("gumroad", "system", endpoint, "error", JSON.stringify(data));
+    throw new Error(`Gumroad API error: ${JSON.stringify(data)}`);
+  }
+  await logIntegrationCall("gumroad", "system", endpoint, "success");
   return data;
 }
 
@@ -51,9 +60,16 @@ async function gumroadPost(endpoint: string, body: Record<string, any>): Promise
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: formData.toString(),
   });
-  if (!res.ok) throw new Error(`Gumroad API ${res.status}: ${res.statusText}`);
+  if (!res.ok) {
+    await logIntegrationCall("gumroad", "system", endpoint, "error", `${res.status}: ${res.statusText}`);
+    throw new Error(`Gumroad API ${res.status}: ${res.statusText}`);
+  }
   const data = await res.json();
-  if (!data.success) throw new Error(`Gumroad API error: ${JSON.stringify(data)}`);
+  if (!data.success) {
+    await logIntegrationCall("gumroad", "system", endpoint, "error", JSON.stringify(data));
+    throw new Error(`Gumroad API error: ${JSON.stringify(data)}`);
+  }
+  await logIntegrationCall("gumroad", "system", endpoint, "success");
   return data;
 }
 
@@ -69,9 +85,16 @@ async function gumroadPut(endpoint: string, body: Record<string, any>): Promise<
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: formData.toString(),
   });
-  if (!res.ok) throw new Error(`Gumroad API ${res.status}: ${res.statusText}`);
+  if (!res.ok) {
+    await logIntegrationCall("gumroad", "system", endpoint, "error", `${res.status}: ${res.statusText}`);
+    throw new Error(`Gumroad API ${res.status}: ${res.statusText}`);
+  }
   const data = await res.json();
-  if (!data.success) throw new Error(`Gumroad API error: ${JSON.stringify(data)}`);
+  if (!data.success) {
+    await logIntegrationCall("gumroad", "system", endpoint, "error", JSON.stringify(data));
+    throw new Error(`Gumroad API error: ${JSON.stringify(data)}`);
+  }
+  await logIntegrationCall("gumroad", "system", endpoint, "success");
   return data;
 }
 

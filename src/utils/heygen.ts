@@ -9,6 +9,8 @@
  * Required env var: HEYGEN_API_KEY
  */
 
+import { logIntegrationCall } from "./integration-logger.ts";
+
 const API_KEY = process.env.HEYGEN_API_KEY || "";
 const BASE_V2 = "https://api.heygen.com/v2";
 const BASE_V1 = "https://api.heygen.com/v1";
@@ -101,10 +103,12 @@ export async function listAvatars(): Promise<AvatarInfo[]> {
   try {
     const res = await fetch(`${BASE_V2}/avatars`, { headers: headers() });
     if (!res.ok) {
+      await logIntegrationCall("heygen", "system", "v2/avatars", "error", `${res.status}`);
       console.error("HeyGen listAvatars error:", res.status);
       return [];
     }
 
+    await logIntegrationCall("heygen", "system", "v2/avatars", "success");
     const data = await res.json();
     return (data.data?.avatars || []).map((a: any) => ({
       avatarId: a.avatar_id,
@@ -114,6 +118,7 @@ export async function listAvatars(): Promise<AvatarInfo[]> {
       premium: a.premium || false,
     }));
   } catch (e: any) {
+    await logIntegrationCall("heygen", "system", "v2/avatars", "error", e.message);
     console.error("HeyGen listAvatars error:", e.message);
     return [];
   }
@@ -129,10 +134,12 @@ export async function listVoices(): Promise<VoiceInfo[]> {
   try {
     const res = await fetch(`${BASE_V2}/voices`, { headers: headers() });
     if (!res.ok) {
+      await logIntegrationCall("heygen", "system", "v2/voices", "error", `${res.status}`);
       console.error("HeyGen listVoices error:", res.status);
       return [];
     }
 
+    await logIntegrationCall("heygen", "system", "v2/voices", "success");
     const data = await res.json();
     return (data.data?.voices || []).map((v: any) => ({
       voiceId: v.voice_id,
@@ -143,6 +150,7 @@ export async function listVoices(): Promise<VoiceInfo[]> {
       emotionSupport: v.emotion_support || false,
     }));
   } catch (e: any) {
+    await logIntegrationCall("heygen", "system", "v2/voices", "error", e.message);
     console.error("HeyGen listVoices error:", e.message);
     return [];
   }
@@ -196,13 +204,16 @@ export async function createVideo(input: CreateVideoInput): Promise<string | nul
 
     if (!res.ok) {
       const errText = await res.text();
+      await logIntegrationCall("heygen", "system", "v2/video/generate", "error", `${res.status}: ${errText}`);
       console.error("HeyGen createVideo error:", res.status, errText);
       return null;
     }
 
+    await logIntegrationCall("heygen", "system", "v2/video/generate", "success");
     const data = await res.json();
     return data.data?.video_id || null;
   } catch (e: any) {
+    await logIntegrationCall("heygen", "system", "v2/video/generate", "error", e.message);
     console.error("HeyGen createVideo error:", e.message);
     return null;
   }
@@ -222,10 +233,12 @@ export async function getVideoStatus(videoId: string): Promise<VideoStatus | nul
     );
 
     if (!res.ok) {
+      await logIntegrationCall("heygen", "system", "v1/video_status.get", "error", `${res.status}`);
       console.error("HeyGen getVideoStatus error:", res.status);
       return null;
     }
 
+    await logIntegrationCall("heygen", "system", "v1/video_status.get", "success");
     const data = await res.json();
     const d = data.data;
 
@@ -238,6 +251,7 @@ export async function getVideoStatus(videoId: string): Promise<VideoStatus | nul
       error: d.error || undefined,
     };
   } catch (e: any) {
+    await logIntegrationCall("heygen", "system", "v1/video_status.get", "error", e.message);
     console.error("HeyGen getVideoStatus error:", e.message);
     return null;
   }
@@ -294,13 +308,16 @@ export async function createVideoAgent(input: CreateVideoAgentInput): Promise<st
 
     if (!res.ok) {
       const errText = await res.text();
+      await logIntegrationCall("heygen", "system", "v2/video_agent/create", "error", `${res.status}: ${errText}`);
       console.error("HeyGen createVideoAgent error:", res.status, errText);
       return null;
     }
 
+    await logIntegrationCall("heygen", "system", "v2/video_agent/create", "success");
     const data = await res.json();
     return data.data?.video_id || null;
   } catch (e: any) {
+    await logIntegrationCall("heygen", "system", "v2/video_agent/create", "error", e.message);
     console.error("HeyGen createVideoAgent error:", e.message);
     return null;
   }
@@ -319,10 +336,12 @@ export async function getVideoAgentStatus(videoId: string): Promise<VideoAgentSt
     );
 
     if (!res.ok) {
+      await logIntegrationCall("heygen", "system", "v2/video_agent/status", "error", `${res.status}`);
       console.error("HeyGen getVideoAgentStatus error:", res.status);
       return null;
     }
 
+    await logIntegrationCall("heygen", "system", "v2/video_agent/status", "success");
     const data = await res.json();
     const d = data.data;
 
@@ -335,6 +354,7 @@ export async function getVideoAgentStatus(videoId: string): Promise<VideoAgentSt
       error: d.error || undefined,
     };
   } catch (e: any) {
+    await logIntegrationCall("heygen", "system", "v2/video_agent/status", "error", e.message);
     console.error("HeyGen getVideoAgentStatus error:", e.message);
     return null;
   }

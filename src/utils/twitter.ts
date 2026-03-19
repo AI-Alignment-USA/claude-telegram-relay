@@ -11,6 +11,7 @@
  */
 
 import { createHmac, randomBytes } from "crypto";
+import { logIntegrationCall } from "./integration-logger.ts";
 
 const API_KEY = process.env.X_API_KEY || "";
 const API_SECRET = process.env.X_API_SECRET || "";
@@ -190,6 +191,7 @@ export async function postTweet(text: string): Promise<TweetResult | null> {
         const data = await res.json();
         incrementCounter();
         lastPostError = null;
+        await logIntegrationCall("twitter", "system", "tweets/create", "success");
         return { id: data.data.id, text: data.data.text };
       }
 
@@ -199,6 +201,7 @@ export async function postTweet(text: string): Promise<TweetResult | null> {
 
       // Retry on 503, fail immediately on other errors
       if (res.status !== 503 || attempt === MAX_RETRIES) {
+        await logIntegrationCall("twitter", "system", "tweets/create", "error", `${res.status}: ${body}`);
         return null;
       }
 
@@ -207,7 +210,10 @@ export async function postTweet(text: string): Promise<TweetResult | null> {
     } catch (e: any) {
       console.error(`Twitter postTweet error (attempt ${attempt}/${MAX_RETRIES}):`, e.message);
       lastPostError = 0;
-      if (attempt === MAX_RETRIES) return null;
+      if (attempt === MAX_RETRIES) {
+        await logIntegrationCall("twitter", "system", "tweets/create", "error", e.message);
+        return null;
+      }
       await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
     }
   }
@@ -262,14 +268,17 @@ export async function postTweetWithMedia(
     });
 
     if (!res.ok) {
+      await logIntegrationCall("twitter", "system", "tweets/create_with_media", "error", `${res.status}`);
       console.error("Twitter postTweetWithMedia error:", res.status, await res.text());
       return null;
     }
 
+    await logIntegrationCall("twitter", "system", "tweets/create_with_media", "success");
     const data = await res.json();
     incrementCounter();
     return { id: data.data.id, text: data.data.text };
   } catch (e: any) {
+    await logIntegrationCall("twitter", "system", "tweets/create_with_media", "error", e.message);
     console.error("Twitter postTweetWithMedia error:", e.message);
     return null;
   }
@@ -317,13 +326,16 @@ async function uploadMedia(imageBuffer: Buffer, mimeType: string): Promise<strin
     });
 
     if (!res.ok) {
+      await logIntegrationCall("twitter", "system", "media/upload", "error", `${res.status}`);
       console.error("Twitter media upload error:", res.status, await res.text());
       return null;
     }
 
+    await logIntegrationCall("twitter", "system", "media/upload", "success");
     const data = await res.json();
     return data.media_id_string;
   } catch (e: any) {
+    await logIntegrationCall("twitter", "system", "media/upload", "error", e.message);
     console.error("Twitter media upload error:", e.message);
     return null;
   }
@@ -351,12 +363,15 @@ export async function deleteTweet(tweetId: string): Promise<boolean> {
     });
 
     if (!res.ok) {
+      await logIntegrationCall("twitter", "system", "tweets/delete", "error", `${res.status}`);
       console.error("Twitter deleteTweet error:", res.status, await res.text());
       return false;
     }
 
+    await logIntegrationCall("twitter", "system", "tweets/delete", "success");
     return true;
   } catch (e: any) {
+    await logIntegrationCall("twitter", "system", "tweets/delete", "error", e.message);
     console.error("Twitter deleteTweet error:", e.message);
     return false;
   }

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en" data-refresh="30">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Integration Health - Tamille Command Center</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <div class="nav-links">
+      <a href="/">Overview</a>
+      <a href="/approvals">Approvals</a>
+      <a href="/costs">Costs</a>
+      <a href="/meetings">Meetings</a>
+      <a href="/newsroom">News Room</a>
+      <a href="/security">Security</a>
+      <a href="/integrations" class="active">Integrations</a>
+      <a href="/products">Products</a>
+      <a href="/content-pipeline">Content</a>
+      <a href="/issues">Issues</a>
+    </div>
+  </nav>
+
+  <main>
+    <h1>Integration Health</h1>
+    <p class="subtitle">Live API call monitoring across all integrations</p>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value">{{totalCalls}}</div>
+        <div class="stat-label">Calls (24h)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color: var(--green);">{{successRate}}%</div>
+        <div class="stat-label">Success Rate</div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-value">{{errorCount}}</div>
+        <div class="stat-label">Errors (24h)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{integrationCount}}</div>
+        <div class="stat-label">Integrations</div>
+      </div>
+    </div>
+
+    <h2>Integration Status</h2>
+    <div class="agent-grid" id="integration-grid"></div>
+
+    <h2>Recent Calls</h2>
+    <table class="data-table" id="calls-table">
+      <thead>
+        <tr><th>Integration</th><th>Agent</th><th>Endpoint</th><th>Status</th><th>Error</th><th>Time</th></tr>
+      </thead>
+      <tbody id="calls-body"></tbody>
+    </table>
+  </main>
+
+  <script>
+    const integrations = {{integrations}};
+    const recentCalls = {{recentCalls}};
+
+    // Integration cards
+    const grid = document.getElementById('integration-grid');
+    integrations.forEach(i => {
+      const statusClass = i.last_status === 'success' ? 'status-done' : 'status-rejected';
+      const borderColor = i.last_status === 'success' ? 'var(--green)' : 'var(--red)';
+      const rate = i.total > 0 ? Math.round((i.successes / i.total) * 100) : 0;
+      const rateColor = rate >= 90 ? 'var(--green)' : rate >= 70 ? 'var(--yellow)' : 'var(--red)';
+      const lastTime = i.last_call ? new Date(i.last_call).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      }) : 'Never';
+
+      grid.innerHTML += `
+        <div class="agent-card" style="border-color: ${borderColor};">
+          <div class="agent-name">${i.integration_name}</div>
+          <div class="agent-role">Last: ${lastTime}</div>
+          <div class="agent-meta">
+            <span class="status ${statusClass}">${i.last_status || 'unknown'}</span>
+            <span style="color: ${rateColor}; font-weight: 600;">${rate}% (${i.total})</span>
+          </div>
+          ${i.last_error ? `<div class="quarantine-reason">${i.last_error.substring(0, 120)}</div>` : ''}
+        </div>`;
+    });
+
+    // Recent calls table
+    const tbody = document.getElementById('calls-body');
+    recentCalls.forEach(c => {
+      const time = new Date(c.created_at).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+      const statusClass = c.status === 'success' ? 'status-done' : 'status-rejected';
+      tbody.innerHTML += `
+        <tr>
+          <td>${c.integration_name}</td>
+          <td>${c.agent_name}</td>
+          <td><code>${c.endpoint_called}</code></td>
+          <td><span class="status ${statusClass}">${c.status}</span></td>
+          <td class="muted">${c.error_message || '-'}</td>
+          <td class="muted">${time}</td>
+        </tr>`;
+    });
+  </script>
+  <script src="/static/refresh.js"></script>
+</body>
+</html>

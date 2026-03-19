@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" data-refresh="30">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Content Pipeline - Tamille Command Center</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .kanban { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+    .kanban-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; min-height: 300px; }
+    .kanban-col h3 { font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 1rem; letter-spacing: 0.05em; }
+    .kanban-item { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin-bottom: 0.5rem; }
+    .kanban-item .title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; }
+    .kanban-item .meta { display: flex; gap: 0.5rem; align-items: center; font-size: 0.75rem; color: var(--text-muted); }
+    .kanban-item .type-badge { background: var(--bg-hover); color: var(--accent-light); padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
+    .kanban-count { background: var(--bg-hover); color: var(--text-muted); padding: 0.1rem 0.5rem; border-radius: 10px; font-size: 0.7rem; margin-left: 0.5rem; }
+    @media (max-width: 768px) { .kanban { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <div class="nav-links">
+      <a href="/">Overview</a>
+      <a href="/approvals">Approvals</a>
+      <a href="/costs">Costs</a>
+      <a href="/meetings">Meetings</a>
+      <a href="/newsroom">News Room</a>
+      <a href="/security">Security</a>
+      <a href="/integrations">Integrations</a>
+      <a href="/products">Products</a>
+      <a href="/content-pipeline" class="active">Content</a>
+      <a href="/issues">Issues</a>
+    </div>
+  </nav>
+
+  <main>
+    <h1>Content Pipeline</h1>
+    <p class="subtitle">Track content from idea to publication</p>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value">{{totalContent}}</div>
+        <div class="stat-label">Total Items</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{ideaCount}}</div>
+        <div class="stat-label">Ideas</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{draftCount}}</div>
+        <div class="stat-label">Drafts</div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-value" style="color: var(--green);">{{publishedCount}}</div>
+        <div class="stat-label">Published</div>
+      </div>
+    </div>
+
+    <h2>Kanban Board</h2>
+    <div class="kanban" id="kanban"></div>
+  </main>
+
+  <script>
+    const content = {{content}};
+    const columns = ['Idea', 'Draft', 'Approved', 'Published'];
+
+    const kanban = document.getElementById('kanban');
+    columns.forEach(col => {
+      const items = content.filter(c => c.status === col);
+      let html = `<div class="kanban-col">
+        <h3>${col} <span class="kanban-count">${items.length}</span></h3>`;
+
+      items.forEach(item => {
+        const time = new Date(item.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        html += `
+          <div class="kanban-item">
+            <div class="title">${item.title}</div>
+            <div class="meta">
+              <span class="type-badge">${item.type}</span>
+              <span>${item.platform}</span>
+              ${item.assigned_agent ? `<span>@ ${item.assigned_agent}</span>` : ''}
+              <span style="margin-left:auto">${time}</span>
+            </div>
+            ${item.notes ? `<div class="muted" style="margin-top:0.35rem;font-size:0.8rem;">${item.notes}</div>` : ''}
+          </div>`;
+      });
+
+      html += `</div>`;
+      kanban.innerHTML += html;
+    });
+  </script>
+  <script src="/static/refresh.js"></script>
+</body>
+</html>

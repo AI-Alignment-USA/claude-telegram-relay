@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en" data-refresh="30">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Issues - Tamille Command Center</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <div class="nav-links">
+      <a href="/">Overview</a>
+      <a href="/approvals">Approvals</a>
+      <a href="/costs">Costs</a>
+      <a href="/meetings">Meetings</a>
+      <a href="/newsroom">News Room</a>
+      <a href="/security">Security</a>
+      <a href="/integrations">Integrations</a>
+      <a href="/products">Products</a>
+      <a href="/content-pipeline">Content</a>
+      <a href="/issues" class="active">Issues</a>
+    </div>
+  </nav>
+
+  <main>
+    <h1>Issue Tracker</h1>
+    <p class="subtitle">Known issues, CISO findings, and bug tracking</p>
+
+    <div class="stats-row">
+      <div class="stat-card" style="border-color: var(--red);">
+        <div class="stat-value" style="color: var(--red);">{{criticalCount}}</div>
+        <div class="stat-label">Critical</div>
+      </div>
+      <div class="stat-card" style="border-color: var(--yellow);">
+        <div class="stat-value" style="color: var(--yellow);">{{warningCount}}</div>
+        <div class="stat-label">Warning</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{openCount}}</div>
+        <div class="stat-label">Open</div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-value" style="color: var(--green);">{{fixedCount}}</div>
+        <div class="stat-label">Fixed</div>
+      </div>
+    </div>
+
+    <h2>Open Issues</h2>
+    <table class="data-table" id="open-table">
+      <thead>
+        <tr><th>Severity</th><th>Title</th><th>Status</th><th>Assigned</th><th>Notes</th><th>Created</th></tr>
+      </thead>
+      <tbody id="open-body"></tbody>
+    </table>
+
+    <h2>Resolved Issues</h2>
+    <table class="data-table" id="resolved-table">
+      <thead>
+        <tr><th>Severity</th><th>Title</th><th>Status</th><th>Assigned</th><th>Resolved</th></tr>
+      </thead>
+      <tbody id="resolved-body"></tbody>
+    </table>
+  </main>
+
+  <script>
+    const issues = {{issues}};
+
+    function severityBadge(sev) {
+      const map = {
+        'Critical': 'status-rejected',
+        'Warning': 'status-pending',
+        'Info': 'status-active',
+      };
+      return `<span class="status ${map[sev] || ''}">${sev}</span>`;
+    }
+
+    function statusBadge(status) {
+      const map = {
+        'Open': 'status-pending',
+        'Fixed': 'status-done',
+        'Needs Fix': 'status-rejected',
+      };
+      return `<span class="status ${map[status] || ''}">${status}</span>`;
+    }
+
+    // Sort: Critical > Warning > Info, then by created_at desc
+    const severityOrder = { 'Critical': 0, 'Warning': 1, 'Info': 2 };
+    const sorted = [...issues].sort((a, b) => {
+      const sa = severityOrder[a.severity] ?? 3;
+      const sb = severityOrder[b.severity] ?? 3;
+      if (sa !== sb) return sa - sb;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    const openIssues = sorted.filter(i => i.status !== 'Fixed');
+    const resolvedIssues = sorted.filter(i => i.status === 'Fixed');
+
+    const openBody = document.getElementById('open-body');
+    openIssues.forEach(i => {
+      const time = new Date(i.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      openBody.innerHTML += `
+        <tr>
+          <td>${severityBadge(i.severity)}</td>
+          <td><strong>${i.title}</strong></td>
+          <td>${statusBadge(i.status)}</td>
+          <td class="muted">${i.assigned_agent || '-'}</td>
+          <td class="muted">${i.notes || '-'}</td>
+          <td class="muted">${time}</td>
+        </tr>`;
+    });
+
+    if (openIssues.length === 0) {
+      openBody.innerHTML = '<tr><td colspan="6" class="muted" style="text-align:center;padding:2rem;">No open issues</td></tr>';
+    }
+
+    const resolvedBody = document.getElementById('resolved-body');
+    resolvedIssues.forEach(i => {
+      const time = i.resolved_at ? new Date(i.resolved_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '-';
+      resolvedBody.innerHTML += `
+        <tr>
+          <td>${severityBadge(i.severity)}</td>
+          <td>${i.title}</td>
+          <td>${statusBadge(i.status)}</td>
+          <td class="muted">${i.assigned_agent || '-'}</td>
+          <td class="muted">${time}</td>
+        </tr>`;
+    });
+
+    if (resolvedIssues.length === 0) {
+      resolvedBody.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:2rem;">No resolved issues yet</td></tr>';
+    }
+  </script>
+  <script src="/static/refresh.js"></script>
+</body>
+</html>
