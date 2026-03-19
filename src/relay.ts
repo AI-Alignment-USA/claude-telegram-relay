@@ -639,6 +639,31 @@ function addToAgentContext(agentId: string, role: string, content: string): void
   }
 }
 
+/**
+ * Detect if a CMO tweet request lacks a specific topic.
+ * Returns true for generic requests like "draft a tweet" or "draft a tweet about today's AI news".
+ * Returns false when a concrete topic is provided like "draft a tweet about X scoring 75% on OSWorld".
+ */
+function isCmoTweetWithoutTopic(message: string): boolean {
+  const lower = message.toLowerCase();
+  const isTweetRequest =
+    lower.includes("tweet") || lower.includes("draft") || lower.includes("post");
+  if (!isTweetRequest) return false;
+
+  // Strip the action words to isolate the topic portion
+  const topicPortion = lower
+    .replace(/\b(draft|write|create|compose|make)\b/g, "")
+    .replace(/\b(a|an|the|me|for|about|on|some|new)\b/g, "")
+    .replace(/\b(tweet|post|thread)\b/g, "")
+    .replace(/\b(today'?s?|latest|recent|current)\b/g, "")
+    .replace(/\b(ai|news|development|update|story|stories)\b/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+
+  // If after stripping generic words there's very little left, no specific topic was given
+  return topicPortion.length < 5;
+}
+
 async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
   const route = await routeMessage(text);
   if (!route) {
@@ -711,11 +736,30 @@ async function handleAgentCommand(ctx: Context, text: string): Promise<void> {
   // Build additional context from prior agent conversations
   const priorContext = getAgentContext(agent.id);
 
+  // If CMO tweet request lacks a specific topic, consult Newsroom first
+  let newsroomContext = "";
+  if (agent.id === "cmo" && isCmoTweetWithoutTopic(message)) {
+    const newsroomAgent = await getAgent("head-newsroom");
+    if (newsroomAgent) {
+      console.log("[cmo] No specific topic detected, consulting Newsroom...");
+      const newsResult = await executeAgent(
+        newsroomAgent,
+        "What is the top AI development today that hasn't been posted about yet? " +
+        "Return the topic, key facts, and source links. Keep it concise.",
+        { supabase }
+      );
+      if (newsResult.response && !newsResult.response.startsWith("Error:")) {
+        newsroomContext = `\nNewsroom Research (use this as your tweet topic):\n${newsResult.response}\n`;
+      }
+    }
+  }
+
   // Execute with the agent's context and model
+  const combinedContext = [priorContext, newsroomContext].filter(Boolean).join("\n") || undefined;
   const result = await executeAgent(agent, message, {
     supabase,
     taskId,
-    additionalContext: priorContext || undefined,
+    additionalContext: combinedContext,
   });
 
   // Route through approval pipeline based on tier
