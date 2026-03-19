@@ -249,7 +249,12 @@ export function determineAutonomyTier(
     lower.includes("publish") ||
     lower.includes("call ceo") ||
     lower.includes("phone call") ||
-    lower.includes("voice call")
+    lower.includes("voice call") ||
+    lower.includes("video post") ||
+    lower.includes("video_post") ||
+    lower.includes("video script") ||
+    lower.includes("record a video") ||
+    lower.includes("make a video")
   ) {
     return 2;
   }
