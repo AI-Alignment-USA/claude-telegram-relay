@@ -11,9 +11,7 @@
  *   GOOGLE_REFRESH_TOKEN
  *   GOOGLE_CALENDAR_ID (defaults to primary)
  *
- * Current token scopes: calendar.readonly, gmail.readonly, gmail.send
- * Note: createEvent requires calendar.events scope. Re-run
- *   get-google-token.ts with the updated scope to enable writes.
+ * Current token scopes: calendar (full read/write), gmail.readonly, gmail.send
  */
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";

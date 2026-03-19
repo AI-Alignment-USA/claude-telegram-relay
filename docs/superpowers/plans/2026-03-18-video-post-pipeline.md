@@ -565,7 +565,7 @@ const testOutput = \`Here is the video post I drafted:
 Mode: avatar
 Script: Welcome to Playhouse STEM. Today we are talking about AI in early childhood education.
 Caption: AI is changing how our kids learn. Here is what every parent needs to know. #PlayhouseSTEM #AIEducation
-Avatar: josh_lite3_20230714
+Avatar: 176ef1975820485c865a5b7381d28866
 Voice: en_us_male_1\`;
 
 const result = parseVideoPostBlock(testOutput);
@@ -573,7 +573,7 @@ console.log(JSON.stringify(result, null, 2));
 console.assert(result !== null, 'Should parse successfully');
 console.assert(result?.videoMode === 'avatar', 'Mode should be avatar');
 console.assert(result?.caption.includes('#PlayhouseSTEM'), 'Caption should have hashtags');
-console.assert(result?.avatarId === 'josh_lite3_20230714', 'Should extract avatar ID');
+console.assert(result?.avatarId === '176ef1975820485c865a5b7381d28866', 'Should extract avatar ID');
 console.log('All parser tests passed');
 "
 ```
@@ -667,7 +667,7 @@ export async function startVideoRender(opts: {
   if (videoMode === "avatar") {
     videoId = await createVideo({
       title: `Playhouse STEM - ${parsed.caption.substring(0, 40)}`,
-      avatarId: parsed.avatarId || taskMetadata.default_avatar_id || "josh_lite3_20230714",
+      avatarId: parsed.avatarId || taskMetadata.default_avatar_id || "176ef1975820485c865a5b7381d28866",
       voiceId: parsed.voiceId || taskMetadata.default_voice_id || "en_us_male_1",
       script: parsed.script,
       width: 1080,

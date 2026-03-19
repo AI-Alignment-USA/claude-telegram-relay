@@ -1,0 +1,22 @@
+{
+  "deniedMcpServers": [
+    {
+      "serverName": "canva"
+    },
+    {
+      "serverName": "figma"
+    },
+    {
+      "serverName": "cloudinary"
+    },
+    {
+      "serverName": "slack"
+    },
+    {
+      "serverName": "make"
+    }
+  ],
+  "enabledPlugins": {
+    "context7@claude-plugins-official": true
+  }
+}
