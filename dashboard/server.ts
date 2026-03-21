@@ -38,6 +38,27 @@ async function renderView(name: string, data: Record<string, any> = {}): Promise
 }
 
 // ============================================================
+// IP ALLOWLIST — localhost + Tailscale (100.x.x.x) only
+// ============================================================
+
+app.use("*", async (c, next) => {
+  const forwarded = c.req.header("x-forwarded-for")?.split(",")[0]?.trim();
+  const realIp = c.req.header("x-real-ip");
+  const socketIp = (c.env as any)?.remoteAddress ?? (c.env as any)?.ip;
+  const ip = forwarded || realIp || socketIp || "127.0.0.1";
+
+  const isLocalhost = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+  const isTailscale = /^(::ffff:)?100\./.test(ip);
+
+  if (!isLocalhost && !isTailscale) {
+    console.warn(`[command-center] Blocked request from ${ip}`);
+    return c.text("Forbidden", 403);
+  }
+
+  return next();
+});
+
+// ============================================================
 // AUTH MIDDLEWARE
 // ============================================================
 
@@ -709,37 +730,12 @@ app.get("/health", async (c) => {
 });
 
 // ============================================================
-// START -- bind to localhost + Tailscale only (never 0.0.0.0)
+// START -- bind to 0.0.0.0 (IP allowlist middleware restricts access)
 // ============================================================
-
-// Prevent Tailscale or any secondary bind failure from crashing the process
-process.on("uncaughtException", (err) => {
-  console.error(`[command-center] Uncaught exception (non-fatal): ${err.message}`);
-});
-
-const TAILSCALE_IP = process.env.TAILSCALE_IP || "";
-const TAILSCALE_PORT = parseInt(process.env.TAILSCALE_PORT || String(PORT));
 
 Bun.serve({
   port: PORT,
-  hostname: "127.0.0.1",
+  hostname: "0.0.0.0",
   fetch: app.fetch,
 });
-console.log(`Dashboard listening on http://127.0.0.1:${PORT}`);
-
-if (TAILSCALE_IP) {
-  const tsPort = TAILSCALE_PORT === PORT ? PORT + 1 : TAILSCALE_PORT;
-  try {
-    Bun.serve({
-      port: tsPort,
-      hostname: TAILSCALE_IP,
-      fetch: app.fetch,
-    });
-    console.log(`Dashboard listening on http://${TAILSCALE_IP}:${tsPort} (Tailscale)`);
-  } catch (e: any) {
-    console.warn(
-      `[command-center] WARNING: Tailscale bind failed (${TAILSCALE_IP}:${tsPort}): ${e.message}. ` +
-      `Dashboard remains accessible on http://127.0.0.1:${PORT}`
-    );
-  }
-}
+console.log(`Dashboard listening on http://0.0.0.0:${PORT} (localhost + Tailscale only via middleware)`);
