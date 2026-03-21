@@ -49,6 +49,9 @@
     </div>
 
     <h2>Workers</h2>
+    <div class="worker-grid" id="worker-grid"></div>
+
+    <h2>Worker Details</h2>
     <table class="data-table" id="workers-table">
       <thead>
         <tr>
@@ -85,7 +88,44 @@
     const weeklyCosts = {{weeklyCosts}};
     const recentTasks = {{recentTasks}};
 
-    // Workers table
+    // Model color map
+    function modelClass(model) {
+      if (model === 'opus') return 'model-opus';
+      if (model === 'sonnet') return 'model-sonnet';
+      return 'model-haiku';
+    }
+
+    // Check if worker ran today
+    function ranToday(lastRun) {
+      if (!lastRun) return false;
+      const today = new Date().toDateString();
+      return new Date(lastRun).toDateString() === today;
+    }
+
+    // Worker score cards
+    const grid = document.getElementById('worker-grid');
+    workers.forEach(w => {
+      const dailyCost = dailyCosts.find(c => c.agent_id === w.id);
+      const costStr = dailyCost ? '$' + (Number(dailyCost.total_cents) / 100).toFixed(2) : '$0.00';
+      const ran = ranToday(w.lastRun) || w.status === 'online';
+      const dotClass = ran ? 'dot-green' : 'dot-red';
+      const dotLabel = ran ? 'Ran today' : (w.status === 'stopped' ? 'Stopped' : 'Missed');
+
+      grid.innerHTML += `
+        <div class="worker-card">
+          <div class="worker-card-header">
+            <div class="worker-card-name">${w.name}</div>
+            <span class="run-dot ${dotClass}" title="${dotLabel}"></span>
+          </div>
+          <div class="worker-card-desc">${w.description}</div>
+          <div class="worker-card-footer">
+            <span class="model-badge ${modelClass(w.model)}">${w.model}</span>
+            <span class="worker-card-cost">${costStr}</span>
+          </div>
+        </div>`;
+    });
+
+    // Workers detail table
     const workersBody = document.getElementById('workers-body');
     workers.forEach(w => {
       const statusClass = w.status === 'online' ? 'status-done' :
@@ -104,7 +144,7 @@
       workersBody.innerHTML += `
         <tr>
           <td><strong>${w.name}</strong></td>
-          <td><span class="model-badge">${w.model}</span></td>
+          <td><span class="model-badge ${modelClass(w.model)}">${w.model}</span></td>
           <td class="muted">${w.cron || '--'}</td>
           <td class="muted">${lastRun}</td>
           <td><span class="status ${statusClass}">${statusLabel}</span></td>

@@ -101,24 +101,24 @@ app.post("/login", async (c) => {
 // WORKER DEFINITIONS (PM2 workers with metadata)
 // ============================================================
 
-const WORKER_DEFS: { id: string; name: string; pm2Name: string; model: string; cron: string }[] = [
-  { id: "ciso-patrol", name: "CISO Patrol", pm2Name: "ciso-patrol", model: "sonnet", cron: "0 23 * * *" },
-  { id: "ciso-brief", name: "CISO Brief", pm2Name: "ciso-brief", model: "sonnet", cron: "30 6 * * *" },
-  { id: "ciso-weekly", name: "CISO Weekly", pm2Name: "ciso-weekly", model: "sonnet", cron: "30 6 * * 1" },
-  { id: "newsroom-collect", name: "Newsroom Collect", pm2Name: "newsroom-collect", model: "haiku", cron: "0 7-21/2 * * *" },
-  { id: "newsroom-daily", name: "Newsroom Daily", pm2Name: "newsroom-daily-digest", model: "sonnet", cron: "30 7 * * *" },
-  { id: "newsroom-weekly", name: "Newsroom Weekly", pm2Name: "newsroom-weekly-dive", model: "sonnet", cron: "0 9 * * 6" },
-  { id: "cfo-daily", name: "CFO Daily", pm2Name: "cfo-daily-report", model: "sonnet", cron: "0 8 * * *" },
-  { id: "cfo-weekly", name: "CFO Weekly", pm2Name: "cfo-weekly-report", model: "sonnet", cron: "0 19 * * 0" },
-  { id: "coo-morning", name: "Morning Briefing", pm2Name: "coo-morning-briefing", model: "sonnet", cron: "0 9 * * *" },
-  { id: "coo-eod", name: "EOD Summary", pm2Name: "coo-eod-summary", model: "sonnet", cron: "0 20 * * *" },
-  { id: "smart-checkin", name: "Smart Check-in", pm2Name: "claude-smart-checkin", model: "haiku", cron: "*/30 9-18 * * *" },
-  { id: "education-digest", name: "Education Digest", pm2Name: "education-digest", model: "sonnet", cron: "0 19 * * 0" },
-  { id: "wellness-checkin", name: "Wellness Check-in", pm2Name: "wellness-checkin", model: "sonnet", cron: "0 20 * * 3" },
-  { id: "household-reminders", name: "Household Reminders", pm2Name: "household-reminders", model: "haiku", cron: "0 8 * * *" },
-  { id: "security-audit", name: "Security Audit", pm2Name: "claude-security-audit", model: "sonnet", cron: "0 20 * * 0" },
-  { id: "twitter-drafts", name: "Twitter Drafts", pm2Name: "twitter-drafts", model: "sonnet", cron: "0 7 * * *" },
-  { id: "memory-flush", name: "Memory Flush", pm2Name: "memory-flush", model: "haiku", cron: "0 23 * * *" },
+const WORKER_DEFS: { id: string; name: string; desc: string; pm2Name: string; model: string; cron: string }[] = [
+  { id: "ciso-patrol", name: "CISO Patrol", desc: "Nightly security sweep", pm2Name: "ciso-patrol", model: "sonnet", cron: "0 23 * * *" },
+  { id: "ciso-brief", name: "CISO Brief", desc: "Morning security briefing", pm2Name: "ciso-brief", model: "sonnet", cron: "30 6 * * *" },
+  { id: "ciso-weekly", name: "CISO Weekly", desc: "Weekly security posture report", pm2Name: "ciso-weekly", model: "sonnet", cron: "30 6 * * 1" },
+  { id: "newsroom-collect", name: "Newsroom Collect", desc: "AI news collection from RSS feeds", pm2Name: "newsroom-collect", model: "haiku", cron: "0 7-21/2 * * *" },
+  { id: "newsroom-daily", name: "Newsroom Daily", desc: "Daily AI news digest", pm2Name: "newsroom-daily-digest", model: "sonnet", cron: "30 7 * * *" },
+  { id: "newsroom-weekly", name: "Newsroom Weekly", desc: "Weekly deep dive analysis", pm2Name: "newsroom-weekly-dive", model: "sonnet", cron: "0 9 * * 6" },
+  { id: "cfo-daily", name: "CFO Daily", desc: "Daily sales and revenue report", pm2Name: "cfo-daily-report", model: "sonnet", cron: "0 8 * * *" },
+  { id: "cfo-weekly", name: "CFO Weekly", desc: "Weekly financial summary", pm2Name: "cfo-weekly-report", model: "sonnet", cron: "0 19 * * 0" },
+  { id: "coo-morning", name: "Morning Briefing", desc: "Daily morning overview", pm2Name: "coo-morning-briefing", model: "sonnet", cron: "0 9 * * *" },
+  { id: "coo-eod", name: "EOD Summary", desc: "End of day wrap-up", pm2Name: "coo-eod-summary", model: "sonnet", cron: "0 20 * * *" },
+  { id: "smart-checkin", name: "Smart Check-in", desc: "Context-aware proactive check-in", pm2Name: "claude-smart-checkin", model: "haiku", cron: "*/30 9-18 * * *" },
+  { id: "education-digest", name: "Education Digest", desc: "Weekly education and STEM news", pm2Name: "education-digest", model: "sonnet", cron: "0 19 * * 0" },
+  { id: "wellness-checkin", name: "Wellness Check-in", desc: "Midweek wellness pulse", pm2Name: "wellness-checkin", model: "sonnet", cron: "0 20 * * 3" },
+  { id: "household-reminders", name: "Household Reminders", desc: "Daily household task reminders", pm2Name: "household-reminders", model: "haiku", cron: "0 8 * * *" },
+  { id: "security-audit", name: "Security Audit", desc: "Weekly codebase security scan", pm2Name: "claude-security-audit", model: "sonnet", cron: "0 20 * * 0" },
+  { id: "twitter-drafts", name: "Twitter Drafts", desc: "Daily tweet draft generation", pm2Name: "twitter-drafts", model: "sonnet", cron: "0 7 * * *" },
+  { id: "memory-flush", name: "Memory Flush", desc: "Nightly knowledge extraction", pm2Name: "memory-flush", model: "haiku", cron: "0 23 * * *" },
 ];
 
 async function getPm2Status(): Promise<Map<string, { status: string; lastRun: number | null }>> {
@@ -170,6 +170,7 @@ app.get("/", async (c) => {
     return {
       id: w.id,
       name: w.name,
+      description: w.desc,
       model: w.model,
       cron: w.cron,
       status: pm2?.status || "stopped",
