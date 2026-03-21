@@ -130,6 +130,9 @@ export function getHelpText(): string {
     `  /shop staples - View/manage staples list\n` +
     `  /shop history - View order history\n` +
     `  /shop status - Check current shopping task\n\n` +
+    `*Tweet Flow*\n` +
+    `  "draft tweets" - Generate AI news tweet drafts\n` +
+    `  "post 1 and 3" - Post selected drafts to X\n\n` +
     `_Wellness also triggers on natural phrases like "I need to vent" or "can we talk"_\n` +
     `_Shopping also triggers on phrases like "I need groceries" or "order dinner"_\n\n` +
     `Send a message without a command prefix for general assistant.`

@@ -43,6 +43,12 @@ import {
   stopVideoPoller,
 } from "./workflows/video-pipeline.ts";
 import {
+  isTweetFlowTrigger,
+  isPostSelectionReply,
+  hasPendingDrafts,
+  handleTweetFlow,
+} from "./commands/tweet-flow.ts";
+import {
   loadStaples,
   addStaple,
   removeStaple,
@@ -622,6 +628,15 @@ bot.on("message:text", async (ctx) => {
   // Handle workflow commands (/status, /costs, /approve)
   if (isWorkflowCommand(text)) {
     await handleWorkflowCommand(ctx, text);
+    return;
+  }
+
+  // Handle tweet flow ("draft tweets" / "tweet drafts" / "post 1 and 3")
+  if (isTweetFlowTrigger(text) || (hasPendingDrafts() && isPostSelectionReply(text))) {
+    await handleTweetFlow(
+      async (msg: string) => { await sendResponse(ctx, msg); },
+      text
+    );
     return;
   }
 
