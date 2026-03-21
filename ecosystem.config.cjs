@@ -236,6 +236,20 @@ module.exports = {
       watch: false,
     },
     // ============================================================
+    // TWITTER
+    // ============================================================
+    {
+      name: "twitter-drafts",
+      script: "twitter-drafts.cjs",
+      cwd: __dirname,
+      out_file: "logs/twitter-drafts.log",
+      error_file: "logs/twitter-drafts.error.log",
+      autorestart: false,
+      cron_restart: "0 7 * * *",
+      watch: false,
+    },
+
+    // ============================================================
     // MEMORY
     // ============================================================
     {
