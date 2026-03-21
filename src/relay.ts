@@ -22,13 +22,14 @@ import {
   isAgentCommand,
   isWorkflowCommand,
   isWellnessTrigger,
+  isShoppingTrigger,
   routeMessage,
   getHelpText,
 } from "./agents/router.ts";
 import { getAgent } from "./agents/registry.ts";
 import { executeAgent } from "./agents/executor.ts";
 import { formatCostReport } from "./utils/cost.ts";
-import { stripEmDashes } from "./utils/telegram.ts";
+import { stripEmDashes, sendTelegramPhoto } from "./utils/telegram.ts";
 import {
   submitForApproval,
   determineAutonomyTier,
@@ -41,6 +42,20 @@ import {
   startVideoPoller,
   stopVideoPoller,
 } from "./workflows/video-pipeline.ts";
+import {
+  loadStaples,
+  addStaple,
+  removeStaple,
+  formatStaplesList,
+  loadPreferences,
+  savePreferences,
+  spawnShoppingSession,
+  spawnCheckoutSession,
+  spawnPlaceOrderSession,
+  spawnHistorySession,
+  detectLoginIssues,
+  type ShopSession,
+} from "./utils/shop.ts";
 
 const PROJECT_ROOT = dirname(dirname(import.meta.path));
 
@@ -281,6 +296,13 @@ bot.on("callback_query:data", async (ctx) => {
     return;
   }
 
+  // Handle shopping approval callbacks
+  if (action === "shop_approve_cart" || action === "shop_approve_checkout" ||
+      action === "shop_handle_manually" || action === "shop_change_cart") {
+    await handleShopCallback(ctx, action, taskId);
+    return;
+  }
+
   // Handle meeting approval/rejection
   if (action === "meeting_approve" || action === "meeting_reject") {
     const status = action === "meeting_approve" ? "completed" : "cancelled";
@@ -516,6 +538,28 @@ bot.on("message:text", async (ctx) => {
     }
   }
 
+  // Check if this is a follow-up for an active shopping session
+  if (supabase) {
+    const { data: activeShopTasks } = await supabase
+      .from("tasks")
+      .select("id, metadata")
+      .eq("agent_id", "head-procurement")
+      .in("status", ["in_progress"])
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (activeShopTasks && activeShopTasks.length > 0) {
+      const shopTask = activeShopTasks[0];
+      const shopState = shopTask.metadata?.shop_state;
+
+      if (shopState === "awaiting_list") {
+        // User is providing their grocery/takeout list
+        await handleShopListResponse(ctx, shopTask.id, shopTask.metadata, text);
+        return;
+      }
+    }
+  }
+
   // Check if this is feedback for a "changes requested" task
   if (supabase) {
     const { data: pendingChanges } = await supabase
@@ -581,6 +625,12 @@ bot.on("message:text", async (ctx) => {
     return;
   }
 
+  // Handle /shop commands (custom handler with subcommands and approval gates)
+  if (text.toLowerCase().startsWith("/shop")) {
+    await handleShopCommand(ctx, text);
+    return;
+  }
+
   // Handle agent commands (/coo, /cfo, /cmo, etc.)
   if (isAgentCommand(text)) {
     await handleAgentCommand(ctx, text);
@@ -590,6 +640,12 @@ bot.on("message:text", async (ctx) => {
   // Natural wellness triggers (route to Head of Wellness without explicit command)
   if (isWellnessTrigger(text)) {
     await handleAgentCommand(ctx, `/wellness ${text}`);
+    return;
+  }
+
+  // Natural shopping triggers (route to Head of Procurement without explicit command)
+  if (isShoppingTrigger(text)) {
+    await handleShopCommand(ctx, `/shop ${text}`);
     return;
   }
 
@@ -668,6 +724,522 @@ function isCmoTweetWithoutTopic(message: string): boolean {
 
   // If after stripping generic words there's very little left, no specific topic was given
   return topicPortion.length < 5;
+}
+
+// ============================================================
+// SHOPPING COMMAND HANDLER
+// ============================================================
+
+async function handleShopCommand(ctx: Context, text: string): Promise<void> {
+  const parts = text.split(/\s+/);
+  const subcommand = parts[1]?.toLowerCase() || "";
+  const rest = parts.slice(2).join(" ").trim();
+
+  // /shop (no subcommand) -- show usage
+  if (!subcommand) {
+    await sendResponse(ctx,
+      `*Head of Procurement*\n\n` +
+      `  /shop groceries - Start a grocery order\n` +
+      `  /shop takeout - Order takeout\n` +
+      `  /shop reorder - Reorder a previous order\n` +
+      `  /shop staples - View your staples list\n` +
+      `  /shop staples add [item] - Add to staples\n` +
+      `  /shop staples remove [item] - Remove from staples\n` +
+      `  /shop history - Learn from your Uber Eats history\n` +
+      `  /shop status - Check current shopping task\n` +
+      `  /shop gift - Coming soon!`
+    );
+    return;
+  }
+
+  // /shop gift -- Phase 2
+  if (subcommand === "gift") {
+    await ctx.reply("Coming soon! Gift shopping will be available in Phase 2.");
+    return;
+  }
+
+  // /shop staples -- manage staples list
+  if (subcommand === "staples") {
+    const staplesAction = parts[2]?.toLowerCase() || "";
+    if (staplesAction === "add" && rest.length > 4) {
+      // "add" is 3 chars + space, so item starts after "add "
+      const item = parts.slice(3).join(" ").trim();
+      if (!item) {
+        await ctx.reply("Usage: /shop staples add [item]\nExample: /shop staples add milk");
+        return;
+      }
+      const result = await addStaple(item);
+      await ctx.reply(stripEmDashes(result));
+    } else if (staplesAction === "remove" && rest.length > 7) {
+      const item = parts.slice(3).join(" ").trim();
+      if (!item) {
+        await ctx.reply("Usage: /shop staples remove [item]\nExample: /shop staples remove milk");
+        return;
+      }
+      const result = await removeStaple(item);
+      await ctx.reply(stripEmDashes(result));
+    } else {
+      const data = await loadStaples();
+      await sendResponse(ctx, formatStaplesList(data));
+    }
+    return;
+  }
+
+  // /shop status -- check active shopping tasks
+  if (subcommand === "status") {
+    if (!supabase) {
+      await ctx.reply("Supabase not configured.");
+      return;
+    }
+    const { data: tasks } = await supabase
+      .from("tasks")
+      .select("id, status, title, metadata, created_at")
+      .eq("agent_id", "head-procurement")
+      .in("status", ["in_progress", "awaiting_approval", "awaiting_coo"])
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (!tasks || tasks.length === 0) {
+      await ctx.reply("No active shopping tasks.");
+      return;
+    }
+
+    const lines = tasks.map(
+      (t: any) => `  [${t.metadata?.shop_state || t.status}] ${t.title}`
+    );
+    await sendResponse(ctx, `*Shopping Tasks*\n\n${lines.join("\n")}`);
+    return;
+  }
+
+  // /shop history -- learn from Uber Eats order history
+  if (subcommand === "history") {
+    await ctx.reply("Analyzing your Uber Eats order history... This may take a few minutes.");
+    await ctx.replyWithChatAction("typing");
+
+    const agent = await getAgent("head-procurement");
+    if (!agent) {
+      await ctx.reply("Head of Procurement agent not found.");
+      return;
+    }
+
+    const result = await spawnHistorySession(agent.systemPrompt);
+
+    if (result.preferences) {
+      await savePreferences(result.preferences as any);
+      await sendResponse(ctx,
+        `*Order History Analysis Complete*\n\n` +
+        `${result.response}\n\n` +
+        `Preferences have been saved and will be used for future orders.`
+      );
+    } else {
+      await sendResponse(ctx,
+        `*Order History Analysis*\n\n${result.response}`
+      );
+    }
+    return;
+  }
+
+  // /shop groceries, /shop takeout, /shop reorder -- start a shopping flow
+  if (subcommand === "groceries" || subcommand === "takeout" || subcommand === "reorder") {
+    if (!supabase) {
+      await ctx.reply("Supabase not configured. Shopping requires task tracking.");
+      return;
+    }
+
+    // If user provided items inline (e.g., /shop groceries milk, eggs, bread)
+    if (rest && subcommand !== "reorder") {
+      // Items provided inline, skip the "what do you need?" step
+      const items = rest.split(/,\s*/).map((i) => i.trim()).filter(Boolean);
+      await startShoppingSession(ctx, subcommand as "groceries" | "takeout", items);
+      return;
+    }
+
+    if (subcommand === "reorder") {
+      await startShoppingSession(ctx, "groceries", [], true);
+      return;
+    }
+
+    // No items provided -- ask what they need
+    const mode = subcommand === "groceries" ? "shop_groceries" : "shop_takeout";
+    const { data: task } = await supabase
+      .from("tasks")
+      .insert({
+        agent_id: "head-procurement",
+        type: "interactive",
+        autonomy_tier: 2,
+        status: "in_progress",
+        title: subcommand === "groceries" ? "Grocery order" : "Takeout order",
+        input: text,
+        metadata: {
+          task_type: mode,
+          shop_state: "awaiting_list",
+        },
+      })
+      .select("id")
+      .single();
+
+    if (subcommand === "groceries") {
+      await ctx.reply(
+        `What do you need? You can:\n` +
+        `- Send a list (e.g., "milk, eggs, chicken, bread")\n` +
+        `- Say "staples" for your usual order\n` +
+        `- Say "reorder" to repeat a recent order`
+      );
+    } else {
+      await ctx.reply(
+        `What are you in the mood for?\n` +
+        `You can say a cuisine, a restaurant name, or just describe what you want.`
+      );
+    }
+    return;
+  }
+
+  // If subcommand doesn't match, check if it's a natural language request
+  // routed here via shopping triggers (e.g., "order groceries tonight")
+  const lowerText = text.toLowerCase();
+  if (lowerText.includes("grocer")) {
+    await handleShopCommand(ctx, "/shop groceries");
+  } else if (lowerText.includes("takeout") || lowerText.includes("dinner") ||
+             lowerText.includes("food") || lowerText.includes("sushi") ||
+             lowerText.includes("pizza")) {
+    await handleShopCommand(ctx, "/shop takeout");
+  } else {
+    await sendResponse(ctx,
+      `I'm not sure what you'd like to shop for. Try:\n` +
+      `  /shop groceries\n` +
+      `  /shop takeout\n\n` +
+      `Send /shop for all options.`
+    );
+  }
+}
+
+/**
+ * Handle the user's item list response for an active shopping session
+ */
+async function handleShopListResponse(
+  ctx: Context,
+  taskId: string,
+  metadata: any,
+  text: string
+): Promise<void> {
+  if (!supabase) return;
+
+  const taskType = metadata?.task_type || "shop_groceries";
+  const isGrocery = taskType === "shop_groceries";
+
+  // Check for special keywords
+  const lower = text.toLowerCase().trim();
+  if (lower === "staples") {
+    const staples = await loadStaples();
+    if (staples.staples.length === 0) {
+      await ctx.reply("Your staples list is empty. Add items with /shop staples add [item], or send a list instead.");
+      return;
+    }
+    await startShoppingSession(ctx, "groceries", staples.staples, false, taskId);
+    return;
+  }
+  if (lower === "reorder") {
+    await startShoppingSession(ctx, "groceries", [], true, taskId);
+    return;
+  }
+
+  // Parse the item list (comma-separated, newline-separated, or just space-separated)
+  let items: string[];
+  if (text.includes(",")) {
+    items = text.split(/,\s*/).map((i) => i.trim()).filter(Boolean);
+  } else if (text.includes("\n")) {
+    items = text.split("\n").map((i) => i.trim()).filter(Boolean);
+  } else {
+    // For takeout, the whole text is the request
+    items = isGrocery ? [text.trim()] : [text.trim()];
+  }
+
+  const mode = isGrocery ? "groceries" : "takeout";
+  await startShoppingSession(ctx, mode, items, false, taskId);
+}
+
+/**
+ * Start the actual shopping session (Chrome MCP browsing)
+ */
+async function startShoppingSession(
+  ctx: Context,
+  mode: "groceries" | "takeout",
+  items: string[],
+  isReorder: boolean = false,
+  existingTaskId?: string
+): Promise<void> {
+  if (!supabase) return;
+
+  const agent = await getAgent("head-procurement");
+  if (!agent) {
+    await ctx.reply("Head of Procurement agent not found.");
+    return;
+  }
+
+  // Update or create task
+  let taskId = existingTaskId;
+  if (taskId) {
+    await supabase
+      .from("tasks")
+      .update({
+        metadata: {
+          task_type: mode === "groceries" ? "shop_groceries" : "shop_takeout",
+          shop_state: "browsing",
+          items_requested: items,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", taskId);
+  } else {
+    const { data } = await supabase
+      .from("tasks")
+      .insert({
+        agent_id: "head-procurement",
+        type: "interactive",
+        autonomy_tier: 2,
+        status: "in_progress",
+        title: mode === "groceries" ? "Grocery order" : "Takeout order",
+        input: items.join(", "),
+        metadata: {
+          task_type: mode === "groceries" ? "shop_groceries" : "shop_takeout",
+          shop_state: "browsing",
+          items_requested: items,
+        },
+      })
+      .select("id")
+      .single();
+    taskId = data?.id;
+  }
+
+  const itemSummary = items.length > 0 ? items.join(", ") : "previous order";
+  await ctx.reply(
+    `Shopping for: ${itemSummary}\n\n` +
+    `Opening Uber Eats and building your cart... This may take a few minutes.`
+  );
+  await ctx.replyWithChatAction("typing");
+
+  // Build the shopping session
+  const session: ShopSession = {
+    mode: isReorder ? "reorder" : mode,
+    items: items.length > 0 ? items : undefined,
+  };
+
+  const result = await spawnShoppingSession(session, agent.systemPrompt);
+
+  // Check for login/CAPTCHA issues
+  if (detectLoginIssues(result.response)) {
+    await ctx.reply(
+      "Shopping session needs your help - possible login or CAPTCHA issue detected. " +
+      "Please check the browser and resolve it, then try again."
+    );
+    if (taskId) {
+      await supabase
+        .from("tasks")
+        .update({
+          status: "in_progress",
+          metadata: {
+            task_type: mode === "groceries" ? "shop_groceries" : "shop_takeout",
+            shop_state: "login_issue",
+            items_requested: items,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", taskId);
+    }
+    return;
+  }
+
+  // Send screenshots
+  for (const screenshot of result.screenshots) {
+    await sendTelegramPhoto(screenshot, "Cart screenshot");
+  }
+
+  // Send cart summary with approval buttons
+  const keyboard = new InlineKeyboard()
+    .text("Approve Cart", `shop_approve_cart:${taskId}`)
+    .text("Change Items", `shop_change_cart:${taskId}`);
+
+  // Check budget warning
+  let budgetWarning = "";
+  const staples = await loadStaples();
+  const typicalBudget = mode === "groceries"
+    ? staples.typical_budget.grocery_run
+    : staples.typical_budget.takeout_order;
+  if (typicalBudget) {
+    // Try to extract a total from the response
+    const totalMatch = result.response.match(/\$(\d+\.?\d*)/);
+    if (totalMatch) {
+      const total = parseFloat(totalMatch[1]);
+      if (total > typicalBudget * 1.5) {
+        budgetWarning = `\n\nBudget Warning: This order ($${total.toFixed(2)}) is significantly higher than your typical ${mode === "groceries" ? "grocery" : "takeout"} order (~$${typicalBudget.toFixed(2)}).`;
+      }
+    }
+  }
+
+  await sendResponse(ctx,
+    `*[Head of Procurement]*\n\n${result.response}${budgetWarning}`
+  );
+
+  // Send the approval buttons in a separate message for clarity
+  await ctx.reply("Review the cart above. Approve to proceed to checkout, or request changes.", {
+    reply_markup: keyboard,
+  });
+
+  // Update task state
+  if (taskId) {
+    await supabase
+      .from("tasks")
+      .update({
+        output: result.response,
+        metadata: {
+          task_type: mode === "groceries" ? "shop_groceries" : "shop_takeout",
+          shop_state: "cart_review",
+          items_requested: items,
+          screenshots: result.screenshots,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", taskId);
+  }
+}
+
+/**
+ * Handle shopping-specific callback button presses
+ */
+async function handleShopCallback(
+  ctx: Context,
+  action: string,
+  taskId: string
+): Promise<void> {
+  if (!supabase) {
+    await ctx.answerCallbackQuery({ text: "Error: Supabase not configured" });
+    return;
+  }
+
+  const { data: task } = await supabase
+    .from("tasks")
+    .select("id, metadata, output")
+    .eq("id", taskId)
+    .single();
+
+  if (!task) {
+    await ctx.answerCallbackQuery({ text: "Task not found" });
+    return;
+  }
+
+  if (action === "shop_approve_cart") {
+    await ctx.answerCallbackQuery({ text: "Cart approved! Proceeding to checkout..." });
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await ctx.reply("Cart approved. Proceeding to checkout... This may take a minute.");
+    await ctx.replyWithChatAction("typing");
+
+    // Update state
+    await supabase
+      .from("tasks")
+      .update({
+        metadata: { ...task.metadata, shop_state: "checkout_review" },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", taskId);
+
+    // Spawn checkout session
+    const agent = await getAgent("head-procurement");
+    if (!agent) {
+      await ctx.reply("Head of Procurement agent not found.");
+      return;
+    }
+
+    const result = await spawnCheckoutSession(agent.systemPrompt);
+
+    // Send screenshots
+    for (const screenshot of result.screenshots) {
+      await sendTelegramPhoto(screenshot, "Checkout screenshot");
+    }
+
+    // Send checkout summary with final approval buttons
+    const keyboard = new InlineKeyboard()
+      .text("Place Order", `shop_approve_checkout:${taskId}`)
+      .text("I'll Handle It", `shop_handle_manually:${taskId}`);
+
+    await sendResponse(ctx,
+      `*[Head of Procurement] Checkout Review*\n\n${result.response}`
+    );
+    await ctx.reply("Review the checkout total above. Place the order or handle it manually.", {
+      reply_markup: keyboard,
+    });
+
+    await supabase
+      .from("tasks")
+      .update({
+        metadata: { ...task.metadata, shop_state: "checkout_review", checkout_summary: result.response },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", taskId);
+
+  } else if (action === "shop_approve_checkout") {
+    await ctx.answerCallbackQuery({ text: "Placing order..." });
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await ctx.reply("Final approval received. Placing the order now...");
+    await ctx.replyWithChatAction("typing");
+
+    // Spawn place order session
+    const agent = await getAgent("head-procurement");
+    if (!agent) {
+      await ctx.reply("Head of Procurement agent not found.");
+      return;
+    }
+
+    const result = await spawnPlaceOrderSession(agent.systemPrompt);
+
+    // Send confirmation screenshots
+    for (const screenshot of result.screenshots) {
+      await sendTelegramPhoto(screenshot, "Order confirmation");
+    }
+
+    await sendResponse(ctx,
+      `*[Head of Procurement] Order Placed*\n\n${result.response}`
+    );
+
+    // Mark task complete
+    await supabase
+      .from("tasks")
+      .update({
+        status: "completed",
+        metadata: { ...task.metadata, shop_state: "completed" },
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", taskId);
+
+  } else if (action === "shop_handle_manually") {
+    await ctx.answerCallbackQuery({ text: "Got it - finish in the browser." });
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await ctx.reply("No problem. The cart is ready in your browser - finish the checkout there when you're ready.");
+
+    await supabase
+      .from("tasks")
+      .update({
+        status: "completed",
+        metadata: { ...task.metadata, shop_state: "manual_handoff" },
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", taskId);
+
+  } else if (action === "shop_change_cart") {
+    await ctx.answerCallbackQuery({ text: "Send your changes." });
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    await ctx.reply("What changes would you like to make? (e.g., 'swap regular milk for oat milk', 'remove bananas', 'add more chicken')");
+
+    await supabase
+      .from("tasks")
+      .update({
+        status: "changes_requested",
+        metadata: { ...task.metadata, shop_state: "awaiting_list" },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", taskId);
+  }
 }
 
 async function handleAgentCommand(ctx: Context, text: string): Promise<void> {

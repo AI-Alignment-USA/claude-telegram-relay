@@ -26,6 +26,8 @@ const COMMAND_MAP: Record<string, string> = {
   "/wellness": "head-wellness",
   "/security": "ciso",
   "/ciso": "ciso",
+  "/shop": "head-procurement",
+  "/procurement": "head-procurement",
 };
 
 // Workflow commands (handled separately from agent routing)
@@ -69,6 +71,26 @@ export function isWellnessTrigger(text: string): boolean {
   return WELLNESS_TRIGGERS.some((t) => lower.includes(t));
 }
 
+// Natural language triggers that route to shopping without a command prefix
+const SHOPPING_TRIGGERS = [
+  "i need groceries",
+  "order groceries",
+  "order dinner",
+  "order takeout",
+  "order food",
+  "get me food",
+  "uber eats",
+  "order from uber",
+  "i need food",
+  "grocery order",
+  "grocery run",
+];
+
+export function isShoppingTrigger(text: string): boolean {
+  const lower = text.toLowerCase();
+  return SHOPPING_TRIGGERS.some((t) => lower.includes(t));
+}
+
 export async function routeMessage(text: string): Promise<RouteResult | null> {
   const parts = text.split(" ");
   const cmd = parts[0].toLowerCase();
@@ -101,7 +123,15 @@ export function getHelpText(): string {
     `  /approved - Get most recently approved output\n` +
     `  /meeting [topic] - Call an ad hoc executive meeting\n` +
     `  /call [message] - Call CEO phone with a spoken message (Tier 2)\n\n` +
-    `_Wellness also triggers on natural phrases like "I need to vent" or "can we talk"_\n\n` +
+    `*Shopping Commands*\n` +
+    `  /shop groceries - Start a grocery order\n` +
+    `  /shop takeout - Order takeout\n` +
+    `  /shop reorder - Reorder a previous order\n` +
+    `  /shop staples - View/manage staples list\n` +
+    `  /shop history - View order history\n` +
+    `  /shop status - Check current shopping task\n\n` +
+    `_Wellness also triggers on natural phrases like "I need to vent" or "can we talk"_\n` +
+    `_Shopping also triggers on phrases like "I need groceries" or "order dinner"_\n\n` +
     `Send a message without a command prefix for general assistant.`
   );
 }

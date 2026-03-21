@@ -1,0 +1,13 @@
+{
+  "staples": [],
+  "preferred_stores": [],
+  "food_preferences": {
+    "organic_preferred": true,
+    "dietary_restrictions": [],
+    "cuisine_preferences": []
+  },
+  "typical_budget": {
+    "grocery_run": null,
+    "takeout_order": null
+  }
+}

@@ -125,6 +125,18 @@ const AGENT_DEFS: Omit<AgentConfig, "systemPrompt">[] = [
       "NEVER use em dashes in any output",
     ],
   },
+  {
+    id: "head-procurement",
+    name: "Head of Procurement",
+    role: "Head of Procurement (Shopping & Orders)",
+    modelDefault: "sonnet",
+    modelEscalated: "opus",
+    autonomyDefault: 2,
+    constraints: [
+      "NEVER auto-purchase without explicit /approved from user",
+      "NEVER use em dashes in any output",
+    ],
+  },
 ];
 
 const agentCache = new Map<string, AgentConfig>();

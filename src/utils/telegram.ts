@@ -43,6 +43,44 @@ export async function sendCostAlert(alerts: string[]): Promise<void> {
 }
 
 /**
+ * Send a photo to Telegram via the Bot API sendPhoto endpoint.
+ * Used for sending shopping cart screenshots.
+ */
+export async function sendTelegramPhoto(
+  photoPath: string,
+  caption?: string
+): Promise<{ ok: boolean; messageId?: number }> {
+  try {
+    const file = Bun.file(photoPath);
+    const blob = new Blob([await file.arrayBuffer()]);
+
+    const formData = new FormData();
+    formData.append("chat_id", CHAT_ID);
+    formData.append("photo", blob, "screenshot.png");
+    if (caption) {
+      formData.append("caption", stripEmDashes(caption));
+      formData.append("parse_mode", "Markdown");
+    }
+
+    const response = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`,
+      { method: "POST", body: formData }
+    );
+
+    if (!response.ok) {
+      console.error("[telegram] sendPhoto failed:", await response.text());
+      return { ok: false };
+    }
+
+    const data: any = await response.json();
+    return { ok: true, messageId: data.result?.message_id };
+  } catch (error) {
+    console.error("[telegram] sendPhoto error:", error);
+    return { ok: false };
+  }
+}
+
+/**
  * Strip em dashes from text before it reaches Telegram.
  * Replaces em dashes (U+2014) and en dashes (U+2013) with regular hyphens.
  */
