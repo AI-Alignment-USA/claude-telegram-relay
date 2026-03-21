@@ -235,5 +235,18 @@ module.exports = {
       cron_restart: "30 6 * * 1",
       watch: false,
     },
+    // ============================================================
+    // MEMORY
+    // ============================================================
+    {
+      name: "memory-flush",
+      script: "memory-flush.cjs",
+      cwd: __dirname,
+      out_file: "logs/memory-flush.log",
+      error_file: "logs/memory-flush.error.log",
+      autorestart: false,
+      cron_restart: "0 23 * * *",
+      watch: false,
+    },
   ],
 };
