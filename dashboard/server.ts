@@ -1,7 +1,7 @@
 /**
- * Command Center Dashboard
+ * Tamille Dashboard
  *
- * Localhost-only web dashboard for the executive team.
+ * Localhost-only web dashboard for Tamille agent system.
  * Auth via DASHBOARD_TOKEN in .env.
  * Reads from Supabase directly.
  *
@@ -98,42 +98,93 @@ app.post("/login", async (c) => {
 });
 
 // ============================================================
+// WORKER DEFINITIONS (PM2 workers with metadata)
+// ============================================================
+
+const WORKER_DEFS: { id: string; name: string; pm2Name: string; model: string; cron: string }[] = [
+  { id: "ciso-patrol", name: "CISO Patrol", pm2Name: "ciso-patrol", model: "sonnet", cron: "0 23 * * *" },
+  { id: "ciso-brief", name: "CISO Brief", pm2Name: "ciso-brief", model: "sonnet", cron: "30 6 * * *" },
+  { id: "ciso-weekly", name: "CISO Weekly", pm2Name: "ciso-weekly", model: "sonnet", cron: "30 6 * * 1" },
+  { id: "newsroom-collect", name: "Newsroom Collect", pm2Name: "newsroom-collect", model: "haiku", cron: "0 7-21/2 * * *" },
+  { id: "newsroom-daily", name: "Newsroom Daily", pm2Name: "newsroom-daily-digest", model: "sonnet", cron: "30 7 * * *" },
+  { id: "newsroom-weekly", name: "Newsroom Weekly", pm2Name: "newsroom-weekly-dive", model: "sonnet", cron: "0 9 * * 6" },
+  { id: "cfo-daily", name: "CFO Daily", pm2Name: "cfo-daily-report", model: "sonnet", cron: "0 8 * * *" },
+  { id: "cfo-weekly", name: "CFO Weekly", pm2Name: "cfo-weekly-report", model: "sonnet", cron: "0 19 * * 0" },
+  { id: "coo-morning", name: "Morning Briefing", pm2Name: "coo-morning-briefing", model: "sonnet", cron: "0 9 * * *" },
+  { id: "coo-eod", name: "EOD Summary", pm2Name: "coo-eod-summary", model: "sonnet", cron: "0 20 * * *" },
+  { id: "smart-checkin", name: "Smart Check-in", pm2Name: "claude-smart-checkin", model: "haiku", cron: "*/30 9-18 * * *" },
+  { id: "education-digest", name: "Education Digest", pm2Name: "education-digest", model: "sonnet", cron: "0 19 * * 0" },
+  { id: "wellness-checkin", name: "Wellness Check-in", pm2Name: "wellness-checkin", model: "sonnet", cron: "0 20 * * 3" },
+  { id: "household-reminders", name: "Household Reminders", pm2Name: "household-reminders", model: "haiku", cron: "0 8 * * *" },
+  { id: "security-audit", name: "Security Audit", pm2Name: "claude-security-audit", model: "sonnet", cron: "0 20 * * 0" },
+  { id: "twitter-drafts", name: "Twitter Drafts", pm2Name: "twitter-drafts", model: "sonnet", cron: "0 7 * * *" },
+  { id: "memory-flush", name: "Memory Flush", pm2Name: "memory-flush", model: "haiku", cron: "0 23 * * *" },
+];
+
+async function getPm2Status(): Promise<Map<string, { status: string; lastRun: number | null }>> {
+  const result = new Map<string, { status: string; lastRun: number | null }>();
+  try {
+    const { spawnSync } = await import("bun");
+    const proc = spawnSync(["C:/Users/crevi/.bun/bin/pm2.exe", "jlist"]);
+    const output = new TextDecoder().decode(proc.stdout);
+    const processes = JSON.parse(output);
+    for (const p of processes) {
+      result.set(p.name, {
+        status: p.pm2_env?.status || "unknown",
+        lastRun: p.pm2_env?.pm_uptime || null,
+      });
+    }
+  } catch {}
+  return result;
+}
+
+// ============================================================
 // OVERVIEW (home)
 // ============================================================
 
 app.get("/", async (c) => {
   if (!supabase) return c.text("Supabase not configured", 500);
 
-  const [agents, dailyCosts, pendingApprovals, recentTasks, quarantinedAgents] = await Promise.all([
-    supabase.from("agents").select("*").order("id"),
+  const [dailyCosts, weeklyCosts, pendingApprovals, recentTasks, pm2Status] = await Promise.all([
     supabase.rpc("get_daily_costs"),
+    supabase.rpc("get_weekly_costs"),
     supabase.rpc("get_pending_approvals"),
     supabase
       .from("tasks")
       .select("id, agent_id, title, status, created_at, completed_at")
       .order("created_at", { ascending: false })
       .limit(20),
-    supabase.from("agents").select("id, name, quarantine_reason").eq("quarantined", true),
+    getPm2Status(),
   ]);
 
   const totalCostCents = (dailyCosts.data || []).reduce(
     (s: number, r: any) => s + Number(r.total_cents), 0
   );
+  const totalWeekCents = (weeklyCosts.data || []).reduce(
+    (s: number, r: any) => s + Number(r.total_cents), 0
+  );
 
-  // Map quarantined data for the template
-  const quarantinedData = (quarantinedAgents.data || []).map((a: any) => ({
-    agent_id: a.id,
-    agent_name: a.name,
-    quarantine_reason: a.quarantine_reason,
-  }));
+  // Build workers array with PM2 status
+  const workers = WORKER_DEFS.map((w) => {
+    const pm2 = pm2Status.get(w.pm2Name);
+    return {
+      id: w.id,
+      name: w.name,
+      model: w.model,
+      cron: w.cron,
+      status: pm2?.status || "stopped",
+      lastRun: pm2?.lastRun || null,
+    };
+  });
 
   return c.html(
     await renderView("overview", {
-      agents: JSON.stringify(agents.data || []),
+      workers: JSON.stringify(workers),
       dailyCosts: JSON.stringify(dailyCosts.data || []),
-      quarantinedAgents: JSON.stringify(quarantinedData),
+      weeklyCosts: JSON.stringify(weeklyCosts.data || []),
       pendingCount: (pendingApprovals.data || []).length,
       totalCostToday: (totalCostCents / 100).toFixed(2),
+      totalCostWeek: (totalWeekCents / 100).toFixed(2),
       recentTasks: JSON.stringify(recentTasks.data || []),
       taskCount: (recentTasks.data || []).length,
       completedCount: (recentTasks.data || []).filter((t: any) => t.status === "completed").length,
@@ -553,24 +604,57 @@ app.post("/api/issues", async (c) => {
 });
 
 // ============================================================
+// TWEET DRAFTS
+// ============================================================
+
+app.get("/tweets", async (c) => {
+  if (!supabase) return c.text("Supabase not configured", 500);
+
+  const { data: drafts } = await supabase
+    .from("tasks")
+    .select("id, title, status, metadata, created_at, completed_at")
+    .eq("agent_id", "twitter-drafts")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  const list = (drafts || []).map((d: any) => ({
+    id: d.id,
+    content: d.metadata?.tweet_text || d.title || "",
+    topic: d.metadata?.topic || "",
+    status: d.status === "completed" ? "posted" :
+      d.status === "approved" ? "approved" :
+      d.status === "rejected" ? "rejected" : "pending",
+    created_at: d.created_at,
+  }));
+
+  const pendingCount = list.filter((d: any) => d.status === "pending").length;
+  const approvedCount = list.filter((d: any) => d.status === "approved").length;
+  const postedCount = list.filter((d: any) => d.status === "posted").length;
+
+  return c.html(
+    await renderView("tweets", {
+      drafts: JSON.stringify(list),
+      totalDrafts: list.length,
+      pendingCount,
+      approvedCount,
+      postedCount,
+    })
+  );
+});
+
+// ============================================================
 // HEALTH CHECK
 // ============================================================
 
 app.get("/health", async (c) => {
   // PM2 service status
-  let pm2Status: any[] = [];
-  try {
-    const { spawnSync } = await import("bun");
-    const proc = spawnSync(["C:/Users/crevi/.bun/bin/pm2.exe", "jlist"]);
-    const output = new TextDecoder().decode(proc.stdout);
-    const processes = JSON.parse(output);
-    pm2Status = processes.map((p: any) => ({
-      name: p.name,
-      status: p.pm2_env?.status || "unknown",
-      uptime: p.pm2_env?.pm_uptime || 0,
-      restarts: p.pm2_env?.restart_time || 0,
-    }));
-  } catch {}
+  const pm2Map = await getPm2Status();
+  const pm2Status = Array.from(pm2Map.entries()).map(([name, info]) => ({
+    name,
+    status: info.status,
+    uptime: info.lastRun || 0,
+    restarts: 0,
+  }));
 
   // Integration status
   const integrations: Record<string, string> = {};
@@ -604,7 +688,7 @@ app.get("/health", async (c) => {
   const { checkStatus: qboCheck } = await import("../src/utils/quickbooks.ts");
   integrations.quickbooks = await qboCheck();
 
-  // Voice Calling — Twilio + ElevenLabs Conversational AI (live API check)
+  // Voice Calling -- Twilio + ElevenLabs Conversational AI (live API check)
   const { checkStatus: voiceCheck, isElevenLabsConfigured, isConversationalAIReady: convAIReady, getActiveCallCount: activeCallCount } = await import("../src/utils/voice.ts");
   const { checkStatus: elAgentsCheck } = await import("../src/utils/elevenlabs-agents.ts");
   integrations.voice = await voiceCheck();
@@ -624,7 +708,7 @@ app.get("/health", async (c) => {
 });
 
 // ============================================================
-// START — bind to localhost + Tailscale only (never 0.0.0.0)
+// START -- bind to localhost + Tailscale only (never 0.0.0.0)
 // ============================================================
 
 // Prevent Tailscale or any secondary bind failure from crashing the process

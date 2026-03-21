@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Costs - Command Center</title>
+  <title>Costs - Tamille Dashboard</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <nav>
-    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <a href="/" class="nav-brand">Tamille Dashboard</a>
     <div class="nav-links">
       <a href="/">Overview</a>
       <a href="/approvals">Approvals</a>
@@ -19,6 +19,7 @@
       <a href="/integrations">Integrations</a>
       <a href="/products">Products</a>
       <a href="/content-pipeline">Content</a>
+      <a href="/tweets">Tweet Drafts</a>
       <a href="/issues">Issues</a>
     </div>
   </nav>
@@ -45,15 +46,23 @@
       </div>
     </div>
 
-    <h2>Daily Cost by Agent</h2>
+    <h2>Costs by Worker</h2>
+    <table class="data-table">
+      <thead>
+        <tr><th>Worker</th><th>Model</th><th>Calls Today</th><th>Cost Today</th><th>Calls This Week</th><th>Cost This Week</th></tr>
+      </thead>
+      <tbody id="worker-costs-body"></tbody>
+    </table>
+
+    <h2>Daily Cost by Worker</h2>
     <div class="chart-container">
       <canvas id="daily-chart" height="250"></canvas>
     </div>
 
-    <h2>Weekly Cost by Agent</h2>
+    <h2>Weekly Cost by Worker</h2>
     <table class="data-table">
       <thead>
-        <tr><th>Agent</th><th>Calls</th><th>Cost</th></tr>
+        <tr><th>Worker</th><th>Calls</th><th>Cost</th></tr>
       </thead>
       <tbody id="weekly-body"></tbody>
     </table>
@@ -70,7 +79,67 @@
     const weeklyCosts = {{weeklyCosts}};
     const costHistory = {{costHistory}};
 
-    const colors = ['#6366f1','#8b5cf6','#a78bfa','#c4b5fd','#818cf8','#a5b4fc','#c7d2fe','#e0e7ff'];
+    const colors = ['#6366f1','#8b5cf6','#a78bfa','#c4b5fd','#818cf8','#a5b4fc','#c7d2fe','#e0e7ff','#4f46e5','#7c3aed','#9333ea','#a855f7','#6d28d9','#5b21b6','#4c1d95','#312e81','#1e1b4b'];
+
+    // Costs by Worker breakdown table
+    const workerCostsBody = document.getElementById('worker-costs-body');
+    const allWorkers = new Map();
+
+    // Merge daily and weekly data
+    dailyCosts.forEach(c => {
+      allWorkers.set(c.agent_id, {
+        name: c.agent_name || c.agent_id,
+        model: c.model || '--',
+        dailyCalls: c.call_count || 0,
+        dailyCost: Number(c.total_cents) / 100,
+        weeklyCalls: 0,
+        weeklyCost: 0,
+      });
+    });
+    weeklyCosts.forEach(c => {
+      if (allWorkers.has(c.agent_id)) {
+        const w = allWorkers.get(c.agent_id);
+        w.weeklyCalls = c.call_count || 0;
+        w.weeklyCost = Number(c.total_cents) / 100;
+      } else {
+        allWorkers.set(c.agent_id, {
+          name: c.agent_name || c.agent_id,
+          model: c.model || '--',
+          dailyCalls: 0,
+          dailyCost: 0,
+          weeklyCalls: c.call_count || 0,
+          weeklyCost: Number(c.total_cents) / 100,
+        });
+      }
+    });
+
+    // Sort by weekly cost descending
+    const sortedWorkers = [...allWorkers.values()].sort((a, b) => b.weeklyCost - a.weeklyCost);
+    let totalDailySum = 0;
+    let totalWeeklySum = 0;
+
+    sortedWorkers.forEach(w => {
+      totalDailySum += w.dailyCost;
+      totalWeeklySum += w.weeklyCost;
+      workerCostsBody.innerHTML += `
+        <tr>
+          <td><strong>${w.name}</strong></td>
+          <td><span class="model-badge">${w.model}</span></td>
+          <td>${w.dailyCalls}</td>
+          <td>$${w.dailyCost.toFixed(2)}</td>
+          <td>${w.weeklyCalls}</td>
+          <td>$${w.weeklyCost.toFixed(2)}</td>
+        </tr>`;
+    });
+    workerCostsBody.innerHTML += `
+      <tr class="total-row">
+        <td><strong>Total</strong></td>
+        <td></td>
+        <td></td>
+        <td><strong>$${totalDailySum.toFixed(2)}</strong></td>
+        <td></td>
+        <td><strong>$${totalWeeklySum.toFixed(2)}</strong></td>
+      </tr>`;
 
     // Daily bar chart
     if (dailyCosts.length > 0) {
@@ -107,7 +176,6 @@
 
     // 7-day trend line chart
     if (costHistory.length > 0) {
-      // Group by date
       const byDate = {};
       costHistory.forEach(c => {
         const date = c.created_at.split('T')[0];

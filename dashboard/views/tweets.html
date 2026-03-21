@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en" data-refresh="60">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tweet Drafts - Tamille Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">Tamille Dashboard</a>
+    <div class="nav-links">
+      <a href="/">Overview</a>
+      <a href="/approvals">Approvals</a>
+      <a href="/costs">Costs</a>
+      <a href="/meetings">Meetings</a>
+      <a href="/newsroom">News Room</a>
+      <a href="/security">Security</a>
+      <a href="/integrations">Integrations</a>
+      <a href="/products">Products</a>
+      <a href="/content-pipeline">Content</a>
+      <a href="/tweets" class="active">Tweet Drafts</a>
+      <a href="/issues">Issues</a>
+    </div>
+  </nav>
+
+  <main>
+    <h1>Tweet Drafts</h1>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value">{{totalDrafts}}</div>
+        <div class="stat-label">Total Drafts</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{pendingCount}}</div>
+        <div class="stat-label">Pending Review</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{approvedCount}}</div>
+        <div class="stat-label">Approved</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{{postedCount}}</div>
+        <div class="stat-label">Posted</div>
+      </div>
+    </div>
+
+    <h2>Pending Review</h2>
+    <div id="pending-drafts"></div>
+
+    <h2>Recent Drafts</h2>
+    <table class="data-table">
+      <thead>
+        <tr><th>Draft</th><th>Topic</th><th>Status</th><th>Created</th></tr>
+      </thead>
+      <tbody id="drafts-body"></tbody>
+    </table>
+  </main>
+
+  <script>
+    const drafts = {{drafts}};
+
+    // Pending drafts as cards
+    const pendingContainer = document.getElementById('pending-drafts');
+    const pendingDrafts = drafts.filter(d => d.status === 'pending' || d.status === 'draft');
+
+    if (pendingDrafts.length === 0) {
+      pendingContainer.innerHTML = '<div class="empty-state">No drafts pending review</div>';
+    } else {
+      pendingDrafts.forEach(d => {
+        const time = new Date(d.created_at).toLocaleString('en-US', {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+        pendingContainer.innerHTML += `
+          <div class="approval-card">
+            <div class="approval-header">
+              <span class="agent-tag">${d.topic || 'tweet'}</span>
+              <span class="muted">${time}</span>
+            </div>
+            <div class="approval-content">${d.content || d.text || '--'}</div>
+          </div>`;
+      });
+    }
+
+    // All drafts table
+    const draftsBody = document.getElementById('drafts-body');
+    drafts.forEach(d => {
+      const time = new Date(d.created_at).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+      const statusClass = d.status === 'posted' ? 'status-done' :
+        d.status === 'approved' ? 'status-active' :
+        d.status === 'rejected' ? 'status-rejected' : 'status-pending';
+      const preview = (d.content || d.text || '').substring(0, 80) + ((d.content || d.text || '').length > 80 ? '...' : '');
+      draftsBody.innerHTML += `
+        <tr>
+          <td>${preview}</td>
+          <td>${d.topic || '--'}</td>
+          <td><span class="status ${statusClass}">${d.status}</span></td>
+          <td class="muted">${time}</td>
+        </tr>`;
+    });
+  </script>
+  <script src="/static/refresh.js"></script>
+</body>
+</html>

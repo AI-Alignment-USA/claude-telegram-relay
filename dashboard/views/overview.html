@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tamille Command Center</title>
+  <title>Tamille Dashboard</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <nav>
-    <a href="/" class="nav-brand">Tamille Command Center</a>
+    <a href="/" class="nav-brand">Tamille Dashboard</a>
     <div class="nav-links">
       <a href="/" class="active">Overview</a>
       <a href="/approvals">Approvals <span class="badge" id="approval-badge">{{pendingCount}}</span></a>
@@ -19,6 +19,7 @@
       <a href="/integrations">Integrations</a>
       <a href="/products">Products</a>
       <a href="/content-pipeline">Content</a>
+      <a href="/tweets">Tweet Drafts</a>
       <a href="/issues">Issues</a>
     </div>
   </nav>
@@ -28,6 +29,10 @@
       <div class="stat-card">
         <div class="stat-value">${{totalCostToday}}</div>
         <div class="stat-label">Cost Today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${{totalCostWeek}}</div>
+        <div class="stat-label">Cost This Week</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">{{taskCount}}</div>
@@ -43,8 +48,21 @@
       </div>
     </div>
 
-    <h2>Executive Team</h2>
-    <div class="agent-grid" id="agent-grid"></div>
+    <h2>Workers</h2>
+    <table class="data-table" id="workers-table">
+      <thead>
+        <tr>
+          <th>Worker Name</th>
+          <th>Model</th>
+          <th>Cron Schedule</th>
+          <th>Last Run</th>
+          <th>Status</th>
+          <th>Cost Today</th>
+          <th>Cost This Week</th>
+        </tr>
+      </thead>
+      <tbody id="workers-body"></tbody>
+    </table>
 
     <h2>Recent Tasks</h2>
     <table class="data-table" id="tasks-table">
@@ -62,54 +80,37 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script>
-    const agents = {{agents}};
+    const workers = {{workers}};
     const dailyCosts = {{dailyCosts}};
+    const weeklyCosts = {{weeklyCosts}};
     const recentTasks = {{recentTasks}};
 
-    // Agent grid
-    const grid = document.getElementById('agent-grid');
-    const quarantinedAgents = {{quarantinedAgents}};
+    // Workers table
+    const workersBody = document.getElementById('workers-body');
+    workers.forEach(w => {
+      const statusClass = w.status === 'online' ? 'status-done' :
+        w.status === 'stopped' ? 'status-pending' : 'status-rejected';
+      const statusLabel = w.status === 'online' ? 'running' : w.status;
 
-    agents.forEach(a => {
-      const qInfo = quarantinedAgents.find(q => q.agent_id === a.id);
+      const dailyCost = dailyCosts.find(c => c.agent_id === w.id);
+      const weeklyCost = weeklyCosts.find(c => c.agent_id === w.id);
+      const costToday = dailyCost ? '$' + (Number(dailyCost.total_cents) / 100).toFixed(2) : '$0.00';
+      const costWeek = weeklyCost ? '$' + (Number(weeklyCost.total_cents) / 100).toFixed(2) : '$0.00';
 
-      // Quarantined agent: show red badge with reason
-      if (qInfo) {
-        grid.innerHTML += `
-          <div class="agent-card quarantined">
-            <div class="agent-name">${a.name}</div>
-            <div class="agent-role">${a.role}</div>
-            <div class="agent-meta">
-              <span class="status status-quarantined">Quarantined</span>
-            </div>
-            <div class="quarantine-reason" title="${(qInfo.quarantine_reason || '').replace(/"/g, '&quot;')}">${(qInfo.quarantine_reason || 'Security maintenance').substring(0, 120)}</div>
-          </div>`;
-        return;
-      }
+      const lastRun = w.lastRun ? new Date(w.lastRun).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      }) : '--';
 
-      // Wellness agent: show "Active" with no drill-down (privacy firewall)
-      if (a.id === 'head-wellness') {
-        grid.innerHTML += `
-          <div class="agent-card">
-            <div class="agent-name">${a.name}</div>
-            <div class="agent-role">${a.role}</div>
-            <div class="agent-meta">
-              <span class="status status-done">Active</span>
-            </div>
-          </div>`;
-        return;
-      }
-      const cost = dailyCosts.find(c => c.agent_id === a.id);
-      const costStr = cost ? '$' + (Number(cost.total_cents) / 100).toFixed(2) : '$0.00';
-      grid.innerHTML += `
-        <a href="/agent/${a.id}" class="agent-card">
-          <div class="agent-name">${a.name}</div>
-          <div class="agent-role">${a.role}</div>
-          <div class="agent-meta">
-            <span class="model-badge">${a.model_default}</span>
-            <span class="cost-badge">${costStr}</span>
-          </div>
-        </a>`;
+      workersBody.innerHTML += `
+        <tr>
+          <td><strong>${w.name}</strong></td>
+          <td><span class="model-badge">${w.model}</span></td>
+          <td class="muted">${w.cron || '--'}</td>
+          <td class="muted">${lastRun}</td>
+          <td><span class="status ${statusClass}">${statusLabel}</span></td>
+          <td>${costToday}</td>
+          <td>${costWeek}</td>
+        </tr>`;
     });
 
     // Tasks table
