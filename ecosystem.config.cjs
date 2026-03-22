@@ -5,18 +5,6 @@ module.exports = {
     // ALWAYS-ON
     // ============================================================
     {
-      name: "claude-telegram-relay",
-      script: "start.cjs",
-      cwd: __dirname,
-      out_file: "logs/claude-telegram-relay.log",
-      error_file: "logs/claude-telegram-relay.error.log",
-      autorestart: true,
-      max_restarts: 10,
-      restart_delay: 5000,
-      windowsHide: true,
-    },
-
-    {
       name: "command-center",
       script: "dashboard.cjs",
       cwd: __dirname,
