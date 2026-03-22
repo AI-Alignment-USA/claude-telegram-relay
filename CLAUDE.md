@@ -74,19 +74,50 @@ Memory is semantic, not chronological. Update existing entries rather than creat
 
 ## Key Integrations
 
+### Social Media
+
+| Service | Purpose | Access Method | URL |
+|---------|---------|---------------|-----|
+| X / Twitter | Posting, engagement | Chrome browser tool | https://x.com/CrevitaMoody |
+| LinkedIn | Company page posting | Chrome browser tool | https://www.linkedin.com/company/playhousestem |
+| Instagram | Posting, engagement | Chrome browser tool | https://www.instagram.com/howtoraiseyourrobot/ |
+| TikTok | Posting, engagement | Chrome browser tool | https://www.tiktok.com/@howtoraiseyourrobot |
+| Pinterest | Pins, boards | Chrome browser tool | https://www.pinterest.com/HowtoRaiseYourRobot/ |
+| YouTube (Crevita) | Channel management | Chrome browser tool | https://www.youtube.com/@Crevita |
+| YouTube (Robot) | Channel management | Chrome browser tool | https://www.youtube.com/@HowtoRaiseYourRobot |
+
+### Publishing & Sales
+
+| Service | Purpose | Access Method | URL |
+|---------|---------|---------------|-----|
+| Gumroad | Digital products, sales | Chrome browser tool | https://gumroad.com/products |
+| Amazon KDP | Book sales reports | Chrome browser tool | https://kdpreports.amazon.com/dashboard |
+| IngramSpark | Print sales reports | Chrome browser tool | https://myaccount.ingramspark.com/Sales/Reports |
+| Printify | Merch products | Chrome browser tool | https://playhouse-stem.printify.me |
+| Medium | Blog posts | Chrome browser tool | https://medium.com/@crevita |
+| Substack | Newsletter | Chrome browser tool | https://substack.com/@crevitamoody |
+
+### Website
+
+| Service | Purpose | Access Method | URL |
+|---------|---------|---------------|-----|
+| Playhouse STEM | Main website | Chrome browser tool | https://playhousestem.ai/ |
+
+### Services (API)
+
 | Service | Purpose | Access Method |
 |---------|---------|---------------|
-| Gumroad | Playhouse STEM storefront, sales tracking | Chrome browser tool or API |
-| Google Calendar | Scheduling, reminders, availability | API |
-| Gmail | Email drafting and monitoring | API |
-| HeyGen | AI video generation for content | API |
-| X / Twitter | Social media posting and engagement | Chrome browser tool |
-| LinkedIn | Professional posting and engagement | Chrome browser tool |
-| QuickBooks Online | Business finances, invoicing | API |
-| Twilio | SMS and voice calls | API |
-| ElevenLabs | Text-to-speech, voice responses | API |
-| Supabase | Database, memory storage, edge functions | API |
-| Canva | Design and graphics | Chrome browser tool |
+| Google Calendar | Scheduling | API |
+| Gmail | Email | API |
+| HeyGen | AI video | API |
+| QuickBooks Online | Finances | API |
+| Twilio | SMS/voice | API |
+| ElevenLabs | Text-to-speech | API |
+| Supabase | Database/memory | API |
+
+## Social Media Posting
+
+When asked to post to any social media platform, use the Chrome browser tool to navigate directly to the platform URL listed above. Crevita is logged into all accounts in Chrome. No APIs needed for social posting. When posting, never use em dashes.
 
 ## Tech Stack
 
