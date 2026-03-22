@@ -45,7 +45,7 @@ Return ONLY the JSON array, no markdown fences, no extra text.`;
 
   const proc = spawnSync(
     [CLAUDE_PATH, "-p", prompt, "--model", "haiku", "--output-format", "text"],
-    { timeout: 180_000 }
+    { timeout: 180_000, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
   );
 
   if (proc.exitCode !== 0) {

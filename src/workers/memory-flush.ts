@@ -128,7 +128,7 @@ If nothing new is worth saving, return empty arrays for all fields.`;
 
   const proc = spawnSync(
     [CLAUDE_PATH, "-p", prompt, "--model", "haiku", "--output-format", "text"],
-    { timeout: 120_000 }
+    { timeout: 120_000, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
   );
 
   const output = new TextDecoder().decode(proc.stdout).trim();
@@ -256,6 +256,7 @@ function gitCommitAndPush(): boolean {
     const addResult = spawnSync(["git", "add", "MEMORY.md", "memory/"], {
       cwd: ROOT,
       timeout: 30_000,
+      windowsHide: true,
     });
 
     if (addResult.exitCode !== 0) {
@@ -267,6 +268,7 @@ function gitCommitAndPush(): boolean {
     const diffResult = spawnSync(["git", "diff", "--cached", "--quiet"], {
       cwd: ROOT,
       timeout: 15_000,
+      windowsHide: true,
     });
 
     if (diffResult.exitCode === 0) {
@@ -276,7 +278,7 @@ function gitCommitAndPush(): boolean {
 
     const commitResult = spawnSync(
       ["git", "commit", "-m", `memory-flush: ${today()} nightly knowledge extraction`],
-      { cwd: ROOT, timeout: 30_000 }
+      { cwd: ROOT, timeout: 30_000, windowsHide: true }
     );
 
     if (commitResult.exitCode !== 0) {
@@ -288,6 +290,7 @@ function gitCommitAndPush(): boolean {
     const pushResult = spawnSync(["git", "push"], {
       cwd: ROOT,
       timeout: 60_000,
+      windowsHide: true,
     });
 
     if (pushResult.exitCode !== 0) {

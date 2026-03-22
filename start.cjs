@@ -4,7 +4,8 @@ const path = require("path");
 
 const child = spawn("bun", ["run", "src/relay.ts"], {
   cwd: __dirname,
-  stdio: "inherit",
+  stdio: "pipe",
+  windowsHide: true,
   env: Object.assign({}, process.env),
 });
 

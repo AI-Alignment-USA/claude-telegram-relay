@@ -2,7 +2,8 @@
 const { spawn } = require("child_process");
 const child = spawn("bun", ["run", "src/workers/monday-standup.ts"], {
   cwd: __dirname,
-  stdio: "inherit",
+  stdio: "pipe",
+  windowsHide: true,
   env: Object.assign({}, process.env),
 });
 child.on("exit", (code) => process.exit(code || 0));

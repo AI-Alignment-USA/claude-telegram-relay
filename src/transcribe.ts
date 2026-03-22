@@ -64,7 +64,7 @@ async function transcribeLocal(audioBuffer: Buffer): Promise<string> {
     // Convert OGG → WAV via ffmpeg
     const ffmpeg = spawn(
       ["ffmpeg", "-i", oggPath, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wavPath, "-y"],
-      { stdout: "pipe", stderr: "pipe" }
+      { stdout: "pipe", stderr: "pipe", windowsHide: true }
     );
     const ffmpegExit = await ffmpeg.exited;
     if (ffmpegExit !== 0) {
@@ -75,7 +75,7 @@ async function transcribeLocal(audioBuffer: Buffer): Promise<string> {
     // Transcribe via whisper.cpp
     const whisper = spawn(
       [whisperBinary, "--model", modelPath, "--file", wavPath, "--output-txt", "--output-file", join(tmpDir, `voice_${timestamp}`), "--no-prints"],
-      { stdout: "pipe", stderr: "pipe" }
+      { stdout: "pipe", stderr: "pipe", windowsHide: true }
     );
     const whisperExit = await whisper.exited;
     if (whisperExit !== 0) {

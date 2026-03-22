@@ -256,6 +256,7 @@ async function callClaude(
     const proc = spawn(args, {
       stdout: "pipe",
       stderr: "pipe",
+      windowsHide: true,
       cwd: PROJECT_DIR || undefined,
       env: {
         ...process.env,

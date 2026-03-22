@@ -97,7 +97,7 @@ function searchMarketNews(query: string): string {
 
     const proc = spawnSync(
       [CLAUDE_PATH, "-p", prompt, "--model", "sonnet", "--output-format", "text"],
-      { timeout: 45000 }
+      { timeout: 45000, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
     );
 
     const output = new TextDecoder().decode(proc.stdout).trim();
@@ -120,7 +120,7 @@ function fetchPolymarketPrice(url: string, label: string): string {
 
     const proc = spawnSync(
       [CLAUDE_PATH, "-p", prompt, "--model", "haiku", "--output-format", "text"],
-      { timeout: 30000 }
+      { timeout: 30000, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
     );
 
     const output = new TextDecoder().decode(proc.stdout).trim();
@@ -230,7 +230,7 @@ async function sendSummary(updates: MarketUpdate[], dateStr: string): Promise<vo
   try {
     const proc = spawnSync(
       [CLAUDE_PATH, "-p", assessPrompt, "--model", "sonnet", "--output-format", "text"],
-      { timeout: 30000 }
+      { timeout: 30000, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
     );
 
     const assessment = new TextDecoder().decode(proc.stdout).trim();
@@ -353,6 +353,7 @@ async function main() {
     const gitAdd = spawnSync(["git", "add", "polymarket-dry-run.md"], {
       cwd: PROJECT_ROOT,
       timeout: 10000,
+      windowsHide: true,
     });
     const gitCommit = spawnSync(
       [
@@ -361,11 +362,12 @@ async function main() {
         "-m",
         `Update Polymarket tracker: week ${weekNum} check-in (${dateStr})`,
       ],
-      { cwd: PROJECT_ROOT, timeout: 10000 }
+      { cwd: PROJECT_ROOT, timeout: 10000, windowsHide: true }
     );
     const gitPush = spawnSync(["git", "push"], {
       cwd: PROJECT_ROOT,
       timeout: 30000,
+      windowsHide: true,
     });
 
     if (gitPush.exitCode === 0) {

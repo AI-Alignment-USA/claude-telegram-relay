@@ -73,7 +73,7 @@ ${itemList}`;
   try {
     const proc = spawnSync(
       [CLAUDE_PATH, "-p", prompt, "--model", "sonnet", "--output-format", "text"],
-      { timeout: 45000 }
+      { timeout: 45000, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
     );
 
     const digest = new TextDecoder().decode(proc.stdout).trim();
@@ -169,7 +169,7 @@ ${itemList}`;
   try {
     const proc = spawnSync(
       [CLAUDE_PATH, "-p", prompt, "--model", "sonnet", "--output-format", "text"],
-      { timeout: 60000 }
+      { timeout: 60000, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
     );
 
     const deepDive = new TextDecoder().decode(proc.stdout).trim();

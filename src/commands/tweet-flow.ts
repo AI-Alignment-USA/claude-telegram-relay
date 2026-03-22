@@ -120,6 +120,8 @@ Return ONLY the JSON array, no markdown fences, no extra text.`;
   const proc = spawnSync([CLAUDE_PATH, "-p", prompt, "--model", "sonnet", "--output-format", "text"], {
     timeout: 180_000,
     cwd: PROJECT_ROOT,
+    windowsHide: true,
+    stdio: ["pipe", "pipe", "pipe"],
   });
 
   if (proc.exitCode !== 0) {

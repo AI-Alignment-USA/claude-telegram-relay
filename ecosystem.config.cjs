@@ -13,6 +13,7 @@ module.exports = {
       autorestart: true,
       max_restarts: 10,
       restart_delay: 5000,
+      windowsHide: true,
     },
 
     {
@@ -24,6 +25,7 @@ module.exports = {
       autorestart: true,
       max_restarts: 5,
       restart_delay: 3000,
+      windowsHide: true,
     },
 
     // ============================================================
@@ -38,6 +40,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 9 * * *",
       watch: false,
+      windowsHide: true,
     },
     {
       name: "coo-eod-summary",
@@ -48,6 +51,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 20 * * *",
       watch: false,
+      windowsHide: true,
     },
 
     // ============================================================
@@ -62,6 +66,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "30 9 * * 1",
       watch: false,
+      windowsHide: true,
     },
 
     // ============================================================
@@ -76,6 +81,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 8 * * *",
       watch: false,
+      windowsHide: true,
     },
     {
       name: "cfo-weekly-report",
@@ -86,6 +92,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 19 * * 0",
       watch: false,
+      windowsHide: true,
     },
 
     // ============================================================
@@ -100,6 +107,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 19 * * 0",
       watch: false,
+      windowsHide: true,
     },
 
     // ============================================================
@@ -114,6 +122,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 8 * * *",
       watch: false,
+      windowsHide: true,
     },
 
     // ============================================================
@@ -128,6 +137,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 7,9,11,13,15,17,19,21 * * *",
       watch: false,
+      windowsHide: true,
     },
     {
       name: "newsroom-daily-digest",
@@ -138,6 +148,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "30 7 * * *",
       watch: false,
+      windowsHide: true,
     },
     {
       name: "newsroom-weekly-dive",
@@ -148,6 +159,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 9 * * 6",
       watch: false,
+      windowsHide: true,
     },
     {
       name: "polymarket-checkin",
@@ -158,6 +170,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 18 * * 0",
       watch: false,
+      windowsHide: true,
     },
 
     // ============================================================
@@ -172,6 +185,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "*/30 9-18 * * *",
       watch: false,
+      windowsHide: true,
     },
 
     // ============================================================
@@ -186,6 +200,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 20 * * 0",
       watch: false,
+      windowsHide: true,
     },
 
     // ============================================================
@@ -200,6 +215,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 20 * * 3",
       watch: false,
+      windowsHide: true,
     },
 
     // ============================================================
@@ -214,6 +230,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 23 * * *",
       watch: false,
+      windowsHide: true,
     },
     {
       name: "ciso-brief",
@@ -224,6 +241,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "30 6 * * *",
       watch: false,
+      windowsHide: true,
     },
     {
       name: "ciso-weekly",
@@ -234,6 +252,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "30 6 * * 1",
       watch: false,
+      windowsHide: true,
     },
     // ============================================================
     // TWITTER
@@ -247,6 +266,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 7 * * *",
       watch: false,
+      windowsHide: true,
     },
 
     // ============================================================
@@ -261,6 +281,7 @@ module.exports = {
       autorestart: false,
       cron_restart: "0 23 * * *",
       watch: false,
+      windowsHide: true,
     },
   ],
 };

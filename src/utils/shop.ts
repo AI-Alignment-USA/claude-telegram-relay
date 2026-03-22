@@ -350,6 +350,7 @@ export async function spawnShoppingSession(
     const proc = spawn(args, {
       stdout: "pipe",
       stderr: "pipe",
+      windowsHide: true,
       env: { ...process.env },
     });
 
@@ -428,6 +429,7 @@ export async function spawnCheckoutSession(
     const proc = spawn(args, {
       stdout: "pipe",
       stderr: "pipe",
+      windowsHide: true,
       env: { ...process.env },
     });
 
@@ -498,6 +500,7 @@ export async function spawnPlaceOrderSession(
     const proc = spawn(args, {
       stdout: "pipe",
       stderr: "pipe",
+      windowsHide: true,
       env: { ...process.env },
     });
 

@@ -152,7 +152,7 @@ ${itemList}`;
   try {
     const proc = spawnSync(
       [CLAUDE_PATH, "-p", prompt, "--model", "haiku", "--output-format", "text"],
-      { timeout: 60000 }
+      { timeout: 60000, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
     );
 
     const output = new TextDecoder().decode(proc.stdout).trim();
