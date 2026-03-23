@@ -264,16 +264,20 @@
 
 ## Weekly Check-Ins
 
-### Week 1: March 18, 2026 (Baseline)
+### Week 2: March 22, 2026
 
-| Market | Price at Open | Current Price | Change | Notes |
-|--------|--------------|---------------|--------|-------|
-| Midterms: Dems Sweep | 50c | 50c | -- | Baseline established |
-| Midterms: R Senate D House | 35c | 35c | -- | Baseline established |
-| Midterms: GOP Sweep | 16c | 16c | -- | Baseline established |
-| Fed: 1 cut | 35c | 35c | -- | FOMC day -- held rates, dot plot shows 1 cut |
-| Fed: 0 cuts | 27c | 27c | -- | 7 of 19 FOMC members favor 0 cuts |
-| AI Model: Anthropic | 93.9c | 93.9c | -- | Claude Opus 4.6 holds #1 on Chatbot Arena |
+| Market | Previous Price | Current Price | Change | Notes |
+|--------|---------------|---------------|--------|-------|
+| Midterms: Democrats Sweep | 50c | ??c | N/A | Here are the key recent developments:  - **Generic ballot, mid-March 2026:** Dem |
+| Fed Rate Cuts 2026: 1 cut | 35c | ??c | N/A | Here are the key recent developments:  - **March 18, 2026 -- Fed holds rates ste |
+| AI Model: Anthropic | 93.9c | ??c | N/A | Here's a concise summary of the most recent developments:  - **Claude leads expe |
+
+**Prediction accuracy:** Tracking
+**Key developments:**
+- Midterms: Democrats Sweep: Here are the key recent developments:  - **Generic ballot, mid-March 2026:** Democrats hold a consistent lead over Republicans on the generic congressional ballot. Morning Consult's tracker (March 9-1
+- Fed Rate Cuts 2026: 1 cut: Here are the key recent developments:  - **March 18, 2026 -- Fed holds rates steady** at the latest FOMC meeting. The updated dot plot showed a deeply divided committee: seven members projected zero r
+- AI Model: Anthropic: Here's a concise summary of the most recent developments:  - **Claude leads expert benchmarks (Feb/Mar 2026):** Anthropic's Claude Sonnet 4.6 tops the GDPval-AA Elo benchmark at 1,633 points, above Op
+
 
 **My predictions this week:**
 - Midterms: Democrats Sweep (YES) @ 50c -- Medium confidence
