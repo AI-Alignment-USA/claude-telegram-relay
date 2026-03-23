@@ -21,8 +21,9 @@ import { guardTiming } from "../utils/timing-guard.ts";
 import {
   isConfigured as gmailConfigured,
   searchEmails,
-  formatEmailList,
+  type GmailMessage,
 } from "../utils/gmail.ts";
+import { spawnSync } from "bun";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
@@ -231,6 +232,60 @@ function getQuote(): string {
 }
 
 // ============================================================
+// GMAIL TRIAGE
+// ============================================================
+
+const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
+
+async function triageEmails(emails: GmailMessage[]): Promise<string> {
+  if (emails.length === 0) return "No unread emails in the last 24 hours.";
+
+  const emailList = emails
+    .map((e, i) => {
+      const from = e.from.replace(/<[^>]+>/g, "").trim();
+      return `${i + 1}. From: ${from} | Subject: ${e.subject} | Snippet: ${e.snippet}`;
+    })
+    .join("\n");
+
+  const prompt = `You are an email triage assistant for Crevita, a data scientist and business owner.
+
+Categorize each email as one of:
+- REPLY NEEDED -- requires a human response
+- ACTION NEEDED -- doesn't need a reply but requires Crevita to do something (pay a bill, check a security alert, update a password, review a document, log in somewhere, etc.)
+- FYI ONLY -- informational, no action required (receipts, shipping confirmations, newsletters, automated notifications with nothing to do)
+
+Only include emails that are REPLY NEEDED or ACTION NEEDED in your output. Skip all FYI ONLY emails.
+
+If there are no REPLY NEEDED or ACTION NEEDED emails, respond with exactly: All clear -- nothing needs your attention.
+
+Format each actionable email as:
+- [REPLY NEEDED] or [ACTION NEEDED] followed by: From, Subject, and a brief one-line note about what's needed
+
+NEVER use em dashes. Use double hyphens (--) instead.
+
+Emails:
+${emailList}`;
+
+  try {
+    const proc = spawnSync(
+      [CLAUDE_PATH, "-p", prompt, "--model", "haiku", "--output-format", "text"],
+      { timeout: 30_000, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
+    );
+
+    const output = new TextDecoder().decode(proc.stdout).trim();
+    if (output) return output;
+  } catch {}
+
+  // Fallback: just list them all if triage fails
+  return emails
+    .map((e) => {
+      const from = e.from.replace(/<[^>]+>/g, "").trim();
+      return `- "${e.subject}" from ${from}`;
+    })
+    .join("\n");
+}
+
+// ============================================================
 // BRIEFINGS
 // ============================================================
 
@@ -254,7 +309,7 @@ async function morningBriefing(): Promise<void> {
     calendarConfigured() ? getTodayEvents() : Promise.resolve(null),
     getQuarantinedAgents(),
     gmailConfigured()
-      ? searchEmails("is:unread -category:promotions -category:social newer_than:1d", 10)
+      ? searchEmails("is:unread newer_than:1d", 15)
       : Promise.resolve(null),
   ]);
   const thomas = getThomasSchedule();
@@ -286,11 +341,10 @@ async function morningBriefing(): Promise<void> {
     sections.push(``, `*Quarantined Agents*`, quarantined);
   }
 
-  // Gmail inbox (crevita.moody@gmail.com)
-  if (recentEmails !== null && recentEmails.length > 0) {
-    sections.push(``, `*Inbox (${recentEmails.length} unread)*`, formatEmailList(recentEmails));
-  } else if (recentEmails !== null) {
-    sections.push(``, `*Inbox*`, `No unread emails in the last 24 hours.`);
+  // Gmail inbox triage (crevita.moody@gmail.com)
+  if (recentEmails !== null) {
+    const triage = await triageEmails(recentEmails);
+    sections.push(``, `*Inbox*`, triage);
   }
 
   if (approvals !== "None") {
