@@ -18,6 +18,11 @@ import {
   isConfigured as calendarConfigured,
 } from "../utils/calendar.ts";
 import { guardTiming } from "../utils/timing-guard.ts";
+import {
+  isConfigured as gmailConfigured,
+  searchEmails,
+  formatEmailList,
+} from "../utils/gmail.ts";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
@@ -242,12 +247,15 @@ async function morningBriefing(): Promise<void> {
     timeZone: "America/Los_Angeles",
   });
 
-  const [weather, goals, approvals, calendarEvents, quarantined] = await Promise.all([
+  const [weather, goals, approvals, calendarEvents, quarantined, recentEmails] = await Promise.all([
     getWeather(),
     getActiveGoals(),
     getPendingApprovals(),
     calendarConfigured() ? getTodayEvents() : Promise.resolve(null),
     getQuarantinedAgents(),
+    gmailConfigured()
+      ? searchEmails("is:unread -category:promotions -category:social newer_than:1d", 10)
+      : Promise.resolve(null),
   ]);
   const thomas = getThomasSchedule();
   const quote = getQuote();
@@ -276,6 +284,13 @@ async function morningBriefing(): Promise<void> {
 
   if (quarantined) {
     sections.push(``, `*Quarantined Agents*`, quarantined);
+  }
+
+  // Gmail inbox (crevita.moody@gmail.com)
+  if (recentEmails !== null && recentEmails.length > 0) {
+    sections.push(``, `*Inbox (${recentEmails.length} unread)*`, formatEmailList(recentEmails));
+  } else if (recentEmails !== null) {
+    sections.push(``, `*Inbox*`, `No unread emails in the last 24 hours.`);
   }
 
   if (approvals !== "None") {
