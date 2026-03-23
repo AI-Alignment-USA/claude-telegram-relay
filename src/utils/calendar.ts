@@ -242,6 +242,41 @@ export async function createEvent(input: CreateEventInput): Promise<CreateEventR
 }
 
 // ============================================================
+// DELETE
+// ============================================================
+
+/**
+ * Delete a calendar event by ID.
+ */
+export async function deleteEvent(eventId: string): Promise<boolean> {
+  const token = await getAccessToken();
+  if (!token) return false;
+
+  try {
+    const res = await fetch(
+      `${CALENDAR_API}/calendars/${encodeURIComponent(CALENDAR_ID)}/events/${encodeURIComponent(eventId)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    if (res.ok || res.status === 204) {
+      await logIntegrationCall("google_calendar", "system", "events/delete", "success");
+      return true;
+    }
+
+    await logIntegrationCall("google_calendar", "system", "events/delete", "error", `${res.status}`);
+    console.error("Calendar deleteEvent error:", res.status);
+    return false;
+  } catch (e: any) {
+    await logIntegrationCall("google_calendar", "system", "events/delete", "error", e.message);
+    console.error("Calendar deleteEvent error:", e.message);
+    return false;
+  }
+}
+
+// ============================================================
 // HEALTH CHECK
 // ============================================================
 
