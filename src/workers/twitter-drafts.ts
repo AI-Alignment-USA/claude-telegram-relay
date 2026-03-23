@@ -22,7 +22,7 @@ const LABEL = "twitter-drafts";
 // ============================================================
 
 async function main(): Promise<void> {
-  guardTiming(LABEL, { earliest: "4:00", latest: "4:30" });
+  guardTiming(LABEL, { earliest: "4:45", latest: "5:30" });
 
   console.log(`[${LABEL}] Starting daily tweet draft generation...`);
 

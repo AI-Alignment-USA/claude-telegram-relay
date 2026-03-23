@@ -14,6 +14,7 @@ import { sendTelegram, stripEmDashes } from "../utils/telegram.ts";
 import { getAgent, getAgentIds } from "../agents/registry.ts";
 import { executeAgent } from "../agents/executor.ts";
 import { guardTiming } from "../utils/timing-guard.ts";
+import { guardDedup, markDedupComplete } from "../utils/dedup-guard.ts";
 import { readFile } from "fs/promises";
 import { join, dirname } from "path";
 
@@ -29,13 +30,19 @@ const supabase =
 // All agents to test, rotated nightly
 const ALL_AGENTS = getAgentIds();
 
-function getTonightsAgent(): string {
-  // Rotate based on day of year
+function getTonightsAgents(): string[] {
+  // Rotate based on day of year, testing 2 agents per night
+  // to guarantee full coverage within a 7-day weekly window.
+  // With 11 agents and 2 per night, full cycle takes 6 nights.
   const dayOfYear = Math.floor(
     (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) /
       (1000 * 60 * 60 * 24)
   );
-  return ALL_AGENTS[dayOfYear % ALL_AGENTS.length];
+  const idx1 = (dayOfYear * 2) % ALL_AGENTS.length;
+  const idx2 = (dayOfYear * 2 + 1) % ALL_AGENTS.length;
+  // Avoid duplicates if ALL_AGENTS has odd length and we wrap around
+  if (idx1 === idx2) return [ALL_AGENTS[idx1]];
+  return [ALL_AGENTS[idx1], ALL_AGENTS[idx2]];
 }
 
 async function loadAgentPrompt(agentId: string): Promise<string> {
@@ -112,43 +119,49 @@ async function inspectAgent(targetAgentId: string): Promise<{
  * Nightly patrol: inspect tonight's agent
  */
 async function nightlyPatrol(): Promise<void> {
-  const targetId = getTonightsAgent();
-  console.log(`Nightly patrol: inspecting ${targetId}...`);
+  const targets = getTonightsAgents();
+  console.log(`Nightly patrol: inspecting ${targets.join(", ")}...`);
 
-  const result = await inspectAgent(targetId);
+  for (const targetId of targets) {
+    try {
+      const result = await inspectAgent(targetId);
 
-  // Save inspection to database
-  if (supabase) {
-    await supabase.from("security_inspections").insert({
-      agent_id: targetId,
-      test_type: "full_inspection",
-      passed: result.passed,
-      findings: result.findings,
-      patches_applied: result.patches,
-      posture_score: result.score,
-    });
-  }
+      // Save inspection to database
+      if (supabase) {
+        await supabase.from("security_inspections").insert({
+          agent_id: targetId,
+          test_type: "full_inspection",
+          passed: result.passed,
+          findings: result.findings,
+          patches_applied: result.patches,
+          posture_score: result.score,
+        });
+      }
 
-  console.log(`Inspection complete: ${targetId} scored ${result.score}/100`);
+      console.log(`Inspection complete: ${targetId} scored ${result.score}/100`);
 
-  // Auto-populate known_issues from CISO findings
-  if (!result.passed && supabase) {
-    const targetAgent = await getAgent(targetId);
-    const agentName = targetAgent?.name || targetId;
-    const severity = result.score < 50 ? "Critical" : "Warning";
-    await supabase.from("known_issues").insert({
-      title: `CISO patrol: ${agentName} failed inspection (score ${result.score}/100)`,
-      status: "Open",
-      severity,
-      assigned_agent: "ciso",
-      notes: result.findings.substring(0, 500),
-    });
-  }
+      // Auto-populate known_issues from CISO findings
+      if (!result.passed && supabase) {
+        const targetAgent = await getAgent(targetId);
+        const agentName = targetAgent?.name || targetId;
+        const severity = result.score < 50 ? "Critical" : "Warning";
+        await supabase.from("known_issues").insert({
+          title: `CISO patrol: ${agentName} failed inspection (score ${result.score}/100)`,
+          status: "Open",
+          severity,
+          assigned_agent: "ciso",
+          notes: result.findings.substring(0, 500),
+        });
+      }
 
-  // If agent failed inspection, quarantine it and submit patch for approval
-  if (!result.passed) {
-    console.log(`Issues found for ${targetId}, quarantining agent.`);
-    await quarantineAgent(targetId, result.findings, result.patches);
+      // If agent failed inspection, quarantine it and submit patch for approval
+      if (!result.passed) {
+        console.log(`Issues found for ${targetId}, quarantining agent.`);
+        await quarantineAgent(targetId, result.findings, result.patches);
+      }
+    } catch (err: any) {
+      console.error(`Error inspecting ${targetId}: ${err.message}`);
+    }
   }
 }
 
@@ -370,12 +383,14 @@ async function main() {
       await nightlyPatrol();
       break;
     case "brief":
-      guardTiming("ciso-brief", { earliest: "6:15", latest: "6:45" });
+      guardTiming("ciso-brief", { earliest: "4:45", latest: "5:30" });
       await morningBrief();
       break;
     case "weekly":
-      guardTiming("ciso-weekly", { days: [1], earliest: "6:15", latest: "6:45" });
+      guardTiming("ciso-weekly", { days: [1], earliest: "4:45", latest: "5:30" });
+      guardDedup("ciso-weekly");
       await weeklyReport();
+      markDedupComplete("ciso-weekly");
       break;
     default:
       console.error(`Unknown mode: ${mode}. Use: patrol, brief, or weekly`);

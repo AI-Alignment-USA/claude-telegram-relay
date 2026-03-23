@@ -11,6 +11,7 @@ import { createClient } from "@supabase/supabase-js";
 import { sendTelegram } from "../utils/telegram.ts";
 import { formatCostReport } from "../utils/cost.ts";
 import { guardTiming } from "../utils/timing-guard.ts";
+import { guardDedup, markDedupComplete } from "../utils/dedup-guard.ts";
 import {
   isConfigured as gumroadConfigured,
   getSales,
@@ -124,9 +125,11 @@ async function main() {
     await weeklyReport();
     console.log("Weekly report sent.");
   } else {
-    guardTiming("cfo-daily", { earliest: "7:45", latest: "8:15" });
+    guardTiming("cfo-daily", { earliest: "4:45", latest: "5:30" });
+    guardDedup("cfo-daily");
     console.log("Building daily sales report...");
     await dailyReport();
+    markDedupComplete("cfo-daily");
     console.log("Daily report sent.");
   }
 }

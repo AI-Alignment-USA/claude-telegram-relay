@@ -221,7 +221,7 @@ async function main() {
     console.log("Building weekly deep dive...");
     await weeklyDeepDive();
   } else {
-    guardTiming("newsroom-daily", { earliest: "7:15", latest: "7:45" });
+    guardTiming("newsroom-daily", { earliest: "4:45", latest: "5:30" });
     console.log("Building daily digest...");
     await dailyDigest();
   }

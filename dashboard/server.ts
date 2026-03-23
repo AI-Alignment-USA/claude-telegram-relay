@@ -124,21 +124,21 @@ app.post("/login", async (c) => {
 
 const WORKER_DEFS: { id: string; name: string; desc: string; pm2Name: string; model: string; cron: string }[] = [
   { id: "ciso-patrol", name: "CISO Patrol", desc: "Nightly security sweep", pm2Name: "ciso-patrol", model: "sonnet", cron: "0 23 * * *" },
-  { id: "ciso-brief", name: "CISO Brief", desc: "Morning security briefing", pm2Name: "ciso-brief", model: "sonnet", cron: "30 6 * * *" },
-  { id: "ciso-weekly", name: "CISO Weekly", desc: "Weekly security posture report", pm2Name: "ciso-weekly", model: "sonnet", cron: "30 6 * * 1" },
+  { id: "ciso-brief", name: "CISO Brief", desc: "Morning security briefing", pm2Name: "ciso-brief", model: "sonnet", cron: "0 5 * * *" },
+  { id: "ciso-weekly", name: "CISO Weekly", desc: "Weekly security posture report", pm2Name: "ciso-weekly", model: "sonnet", cron: "0 5 * * 1" },
   { id: "newsroom-collect", name: "Newsroom Collect", desc: "AI news collection from RSS feeds", pm2Name: "newsroom-collect", model: "haiku", cron: "0 7-21/2 * * *" },
-  { id: "newsroom-daily", name: "Newsroom Daily", desc: "Daily AI news digest", pm2Name: "newsroom-daily-digest", model: "sonnet", cron: "30 7 * * *" },
+  { id: "newsroom-daily", name: "Newsroom Daily", desc: "Daily AI news digest", pm2Name: "newsroom-daily-digest", model: "sonnet", cron: "0 5 * * *" },
   { id: "newsroom-weekly", name: "Newsroom Weekly", desc: "Weekly deep dive analysis", pm2Name: "newsroom-weekly-dive", model: "sonnet", cron: "0 9 * * 6" },
-  { id: "cfo-daily", name: "CFO Daily", desc: "Daily sales and revenue report", pm2Name: "cfo-daily-report", model: "sonnet", cron: "0 8 * * *" },
+  { id: "cfo-daily", name: "CFO Daily", desc: "Daily sales and revenue report", pm2Name: "cfo-daily-report", model: "sonnet", cron: "0 5 * * *" },
   { id: "cfo-weekly", name: "CFO Weekly", desc: "Weekly financial summary", pm2Name: "cfo-weekly-report", model: "sonnet", cron: "0 19 * * 0" },
-  { id: "coo-morning", name: "Morning Briefing", desc: "Daily morning overview", pm2Name: "coo-morning-briefing", model: "sonnet", cron: "0 9 * * *" },
+  { id: "coo-morning", name: "Morning Briefing", desc: "Daily morning overview", pm2Name: "coo-morning-briefing", model: "sonnet", cron: "0 5 * * *" },
   { id: "coo-eod", name: "EOD Summary", desc: "End of day wrap-up", pm2Name: "coo-eod-summary", model: "sonnet", cron: "0 20 * * *" },
   { id: "smart-checkin", name: "Smart Check-in", desc: "Context-aware proactive check-in", pm2Name: "claude-smart-checkin", model: "haiku", cron: "*/30 9-18 * * *" },
   { id: "education-digest", name: "Education Digest", desc: "Weekly education and STEM news", pm2Name: "education-digest", model: "sonnet", cron: "0 19 * * 0" },
   { id: "wellness-checkin", name: "Wellness Check-in", desc: "Midweek wellness pulse", pm2Name: "wellness-checkin", model: "sonnet", cron: "0 20 * * 3" },
   { id: "household-reminders", name: "Household Reminders", desc: "Daily household task reminders", pm2Name: "household-reminders", model: "haiku", cron: "0 8 * * *" },
   { id: "security-audit", name: "Security Audit", desc: "Weekly codebase security scan", pm2Name: "claude-security-audit", model: "sonnet", cron: "0 20 * * 0" },
-  { id: "twitter-drafts", name: "Twitter Drafts", desc: "Daily tweet draft generation", pm2Name: "twitter-drafts", model: "sonnet", cron: "0 7 * * *" },
+  { id: "twitter-drafts", name: "Twitter Drafts", desc: "Daily tweet draft generation", pm2Name: "twitter-drafts", model: "sonnet", cron: "0 5 * * *" },
   { id: "memory-flush", name: "Memory Flush", desc: "Nightly knowledge extraction", pm2Name: "memory-flush", model: "haiku", cron: "0 23 * * *" },
 ];
 
@@ -730,12 +730,48 @@ app.get("/health", async (c) => {
 });
 
 // ============================================================
-// START -- bind to 0.0.0.0 (IP allowlist middleware restricts access)
+// START -- bind localhost + optionally Tailscale IP
 // ============================================================
 
+const TAILSCALE_IP = process.env.TAILSCALE_IP || "";
+
+// Always serve on localhost
 Bun.serve({
   port: PORT,
-  hostname: "0.0.0.0",
+  hostname: "127.0.0.1",
   fetch: app.fetch,
 });
-console.log(`Dashboard listening on http://0.0.0.0:${PORT} (localhost + Tailscale only via middleware)`);
+console.log(`Dashboard listening on http://127.0.0.1:${PORT}`);
+
+// Attempt to also bind on the Tailscale IP for mobile access
+if (TAILSCALE_IP) {
+  console.log(`Tailscale IP from .env: ${TAILSCALE_IP}`);
+
+  const tryTailscaleBind = (attempt: number) => {
+    try {
+      Bun.serve({
+        port: PORT,
+        hostname: TAILSCALE_IP,
+        fetch: app.fetch,
+      });
+      console.log(`Dashboard also listening on http://${TAILSCALE_IP}:${PORT} (Tailscale)`);
+    } catch (err: any) {
+      if (attempt === 1) {
+        console.warn(
+          `[command-center] Tailscale bind to ${TAILSCALE_IP}:${PORT} failed (attempt ${attempt}), ` +
+          `retrying in 3s... Error: ${err.message}`
+        );
+        setTimeout(() => tryTailscaleBind(2), 3000);
+      } else {
+        console.warn(
+          `[command-center] Tailscale bind to ${TAILSCALE_IP}:${PORT} failed (attempt ${attempt}). ` +
+          `Dashboard will serve on localhost only. Error: ${err.message}`
+        );
+      }
+    }
+  };
+
+  tryTailscaleBind(1);
+} else {
+  console.warn("[command-center] TAILSCALE_IP not set in .env -- dashboard is localhost-only");
+}

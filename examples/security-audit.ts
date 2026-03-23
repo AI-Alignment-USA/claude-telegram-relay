@@ -28,24 +28,26 @@ interface CheckResult {
 // ============================================================
 
 async function checkBotRunning(): Promise<CheckResult> {
-  const name = "Bot is running";
+  const name = "Command Center is running";
   try {
     const proc = spawnSync(["C:/Users/crevi/.bun/bin/pm2.exe", "jlist"], {
       cwd: PROJECT_ROOT,
     });
     const output = new TextDecoder().decode(proc.stdout);
     const processes = JSON.parse(output);
-    const relay = processes.find(
-      (p: any) => p.name === "claude-telegram-relay"
+    // The relay is now Claude Code Channels (not a PM2 process).
+    // Check for command-center dashboard instead, which is the always-on PM2 service.
+    const dashboard = processes.find(
+      (p: any) => p.name === "command-center"
     );
-    if (!relay) {
-      return { name, passed: false, detail: "Process not found in PM2" };
+    if (!dashboard) {
+      return { name, passed: false, detail: "command-center not found in PM2" };
     }
-    if (relay.pm2_env?.status !== "online") {
+    if (dashboard.pm2_env?.status !== "online") {
       return {
         name,
         passed: false,
-        detail: `Status: ${relay.pm2_env?.status}`,
+        detail: `Status: ${dashboard.pm2_env?.status}`,
       };
     }
     return { name, passed: true, detail: "Online" };
@@ -62,21 +64,22 @@ async function checkNoCrashes(): Promise<CheckResult> {
     });
     const output = new TextDecoder().decode(proc.stdout);
     const processes = JSON.parse(output);
-    const relay = processes.find(
-      (p: any) => p.name === "claude-telegram-relay"
+    // Check command-center (the always-on PM2 service)
+    const dashboard = processes.find(
+      (p: any) => p.name === "command-center"
     );
-    if (!relay) {
-      return { name, passed: false, detail: "Process not found" };
+    if (!dashboard) {
+      return { name, passed: false, detail: "command-center not found" };
     }
-    const restarts = relay.pm2_env?.restart_time || 0;
+    const restarts = dashboard.pm2_env?.restart_time || 0;
     if (restarts > 5) {
       return {
         name,
         passed: false,
-        detail: `${restarts} restarts detected`,
+        detail: `command-center: ${restarts} restarts detected`,
       };
     }
-    return { name, passed: true, detail: `${restarts} restarts` };
+    return { name, passed: true, detail: `command-center: ${restarts} restarts` };
   } catch (e: any) {
     return { name, passed: false, detail: e.message };
   }
@@ -250,7 +253,7 @@ async function checkDependencies(): Promise<CheckResult> {
 async function checkErrorLogs(): Promise<CheckResult> {
   const name = "No recent errors in logs";
   try {
-    const logPath = join(PROJECT_ROOT, "logs", "claude-telegram-relay.error.log");
+    const logPath = join(PROJECT_ROOT, "logs", "command-center.error.log");
     const content = await readFile(logPath, "utf-8");
     const lines = content.trim().split("\n").filter(Boolean);
     // Check last 50 lines for recurring errors

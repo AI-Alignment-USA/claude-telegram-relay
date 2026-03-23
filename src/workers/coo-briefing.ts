@@ -393,7 +393,7 @@ async function main() {
     await eodSummary();
     console.log("EOD summary sent.");
   } else {
-    guardTiming("coo-morning", { earliest: "8:45", latest: "9:15" });
+    guardTiming("coo-morning", { earliest: "4:45", latest: "5:30" });
     console.log("Building morning briefing...");
     await morningBriefing();
     console.log("Morning briefing sent.");
