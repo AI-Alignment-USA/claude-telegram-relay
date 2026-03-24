@@ -167,15 +167,25 @@ async function getPm2Status(): Promise<Map<string, { status: string; lastRun: nu
 app.get("/", async (c) => {
   if (!supabase) return c.text("Supabase not configured", 500);
 
-  const [dailyCosts, weeklyCosts, pendingApprovals, recentTasks, pm2Status] = await Promise.all([
+  // Start of today in UTC for filtering
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayISO = todayStart.toISOString();
+
+  const [dailyCosts, weeklyCosts, pendingApprovals, recentTasks, todayTaskCount, pm2Status] = await Promise.all([
     supabase.rpc("get_daily_costs"),
     supabase.rpc("get_weekly_costs"),
     supabase.rpc("get_pending_approvals"),
     supabase
       .from("tasks")
       .select("id, agent_id, title, status, created_at, completed_at")
+      .gte("created_at", todayISO)
       .order("created_at", { ascending: false })
-      .limit(20),
+      .limit(50),
+    supabase
+      .from("tasks")
+      .select("id, status", { count: "exact", head: false })
+      .gte("created_at", todayISO),
     getPm2Status(),
   ]);
 
@@ -185,6 +195,9 @@ app.get("/", async (c) => {
   const totalWeekCents = (weeklyCosts.data || []).reduce(
     (s: number, r: any) => s + Number(r.total_cents), 0
   );
+
+  const actualTaskCount = todayTaskCount.count ?? (todayTaskCount.data || []).length;
+  const actualCompletedCount = (todayTaskCount.data || []).filter((t: any) => t.status === "completed").length;
 
   // Build workers array with PM2 status
   const workers = WORKER_DEFS.map((w) => {
@@ -209,8 +222,8 @@ app.get("/", async (c) => {
       totalCostToday: (totalCostCents / 100).toFixed(2),
       totalCostWeek: (totalWeekCents / 100).toFixed(2),
       recentTasks: JSON.stringify(recentTasks.data || []),
-      taskCount: (recentTasks.data || []).length,
-      completedCount: (recentTasks.data || []).filter((t: any) => t.status === "completed").length,
+      taskCount: actualTaskCount,
+      completedCount: actualCompletedCount,
     })
   );
 });

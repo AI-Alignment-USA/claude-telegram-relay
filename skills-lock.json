@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "ciso-agent-security": {
+      "source": "Crevita/ciso-agent-security",
+      "sourceType": "github",
+      "computedHash": "9ed57032703cad43cb1e1dff35fdc27fc38009610a40a98fd3e097f0d0b8005c"
+    }
+  }
+}
