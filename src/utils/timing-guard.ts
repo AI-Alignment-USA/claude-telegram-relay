@@ -58,6 +58,11 @@ function toMinutes(hour: number, minute: number): number {
  * @param window - The allowed execution window
  */
 export function guardTiming(label: string, window: TimingWindow): void {
+  if (process.env.FORCE_RUN === "1") {
+    console.log(`[${label}] FORCE_RUN=1, skipping timing guard.`);
+    return;
+  }
+
   const now = getPacificNow();
   const nowMinutes = toMinutes(now.hour, now.minute);
   const earliest = parseTime(window.earliest);
