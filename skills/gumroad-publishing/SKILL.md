@@ -11,23 +11,22 @@ This skill ensures every Gumroad product page and profile update is complete, po
 
 **Owner store:** playhouse53.gumroad.com (Crevita Moody / C.T. Moody)
 
-## Brand Theme: Warm Tech
+## Brand Theme: Cream & Gold (YouTube Brand Match)
 
-All visuals and text should follow the Warm Tech palette:
+All visuals and text should follow the cream/gold palette pulled from the YouTube channel:
 
 | Token | Hex | Usage |
 |-------|-----|-------|
-| bg-deep | #17150f | Page background |
-| bg-card | #1c1a17 | Card surfaces, hero |
-| bg-elevated | #242019 | Hover states |
-| border-subtle | #2e2a22 | Borders, dividers |
-| gold-muted | rgba(184,134,11,0.15) | Badge/tag backgrounds |
-| gold-text | #d4a84b | Accent text, links |
-| gold-solid | #b8860b | Buttons, CTA, avatar |
-| gold-bright | #e6b84d | Hover states |
-| text-primary | #f5f0e8 | Headlines |
-| text-secondary | #a09888 | Body copy |
-| text-muted | #8a8070 | Captions, metadata |
+| bg-cream | #f5f2ed | Primary background (silk/cream) |
+| bg-warm-white | #faf8f4 | Product cards, elevated surfaces |
+| border-warm | #e8e2d6 | Borders, dividers |
+| gold-primary | #e0b65f | Buttons, CTA, avatar bg, subscribe |
+| gold-dark | #c49a3c | Price labels, accent text, links |
+| gold-tag-bg | rgba(224,182,95,0.2) | Tag/badge backgrounds |
+| gold-tag-text | #8a6d2a | Tag/badge text |
+| text-heading | #2c2c2a | Headlines, product names |
+| text-body | #5c584f | Body copy, descriptions |
+| text-muted | #8a8070 | Captions, metadata, sub-labels |
 
 ---
 
@@ -47,15 +46,18 @@ All visuals and text should follow the Warm Tech palette:
 3. **Profile image/avatar**: Initials "CM" on gold-solid (#b8860b) background, or branded icon
 4. **Cover/banner image**: 1280x400px, dark background (#1c1a17), name in #f5f0e8, subtitle in #8a8070, subtle decorative pattern in #2e2a22
 5. **Social links**: Add X handle, YouTube channel, personal website
-6. **Custom CSS**: Apply warm tech color overrides (see references/custom-css.md if available, or use the CSS from the implementation brief)
+6. **Custom colors**: Gumroad does NOT have a custom CSS section. Use the built-in color pickers in profile settings:
+  - Background color picker: set to #f5f2ed (cream/silk)
+  - Highlight/accent color picker: set to #e0b65f (gold)
+  - Font selector: choose "Inter" or cleanest sans-serif available
 
 ### Profile font and color settings
 
-Gumroad has built-in font and color pickers under profile settings. Set:
-- **Font**: Use the cleanest sans-serif option available
-- **Background color**: #17150f (or closest dark option)
-- **Accent color**: #b8860b (gold)
-- **Text color**: #f5f0e8
+Gumroad has built-in font and color pickers under profile settings (no custom CSS available). Set:
+- **Font**: Inter (or cleanest sans-serif option available)
+- **Background color**: #f5f2ed (cream/silk -- matches YouTube brand)
+- **Highlight/accent color**: #e0b65f (gold -- matches YouTube brand)
+- Text color is controlled by the background choice -- Gumroad auto-adjusts text for contrast
 
 ---
 
@@ -75,7 +77,7 @@ This tab scrolls through several distinct sections from top to bottom. Walk thro
   - Cannot use PDF as cover image
   - Filenames must NOT contain: # $ _ + & ; : %
   - All covers auto-adjust to match the height of the first one -- use equal heights
-  - Follow the warm tech palette: dark background, gold accents, clean typography
+  - Follow the cream & gold palette: cream background (#f5f2ed), gold accents (#e0b65f), dark text (#2c2c2a)
   - Video covers supported via YouTube/Vimeo embed URL (click the video embed icon)
 
 #### Section: Product name and description (below cover)
@@ -222,7 +224,7 @@ The Receipt tab has two fields on the left and a live Preview panel on the right
 - [ ] Cover image is not pixelated, cropped badly, or stretched
 - [ ] Thumbnail displays correctly (check profile page preview)
 - [ ] All text is readable against the background (no contrast issues)
-- [ ] Color theme is consistent with warm tech palette
+- [ ] Color theme is consistent with cream & gold palette (matches YouTube brand)
 - [ ] No placeholder text remaining ("Lorem ipsum", "TODO", "CHANGE THIS")
 - [ ] No typos in title, description, or summary
 - [ ] Formatting is clean -- no orphaned bold tags, broken links, or raw HTML
@@ -281,7 +283,7 @@ The Receipt tab has two fields on the left and a live Preview panel on the right
 6. **No receipt message** -- missed opportunity to thank customers and offer next steps
 7. **Skipping tags/category** -- product won't appear in Gumroad Discover search
 8. **Cover image too small** -- anything under 1280x720 looks blurry on desktop
-9. **Inconsistent branding** -- cover image colors or style don't match your storefront theme
+9. **Inconsistent branding** -- cover image colors or style don't match your cream & gold storefront theme
 
 ---
 
