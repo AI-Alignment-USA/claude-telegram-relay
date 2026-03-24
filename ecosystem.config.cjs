@@ -258,6 +258,21 @@ module.exports = {
     },
 
     // ============================================================
+    // TWITTER NUDGE
+    // ============================================================
+    {
+      name: "twitter-nudge",
+      script: "twitter-nudge.cjs",
+      cwd: __dirname,
+      out_file: "logs/twitter-nudge.log",
+      error_file: "logs/twitter-nudge.error.log",
+      autorestart: false,
+      cron_restart: "0 9 * * *",
+      watch: false,
+      windowsHide: true,
+    },
+
+    // ============================================================
     // MEMORY
     // ============================================================
     {

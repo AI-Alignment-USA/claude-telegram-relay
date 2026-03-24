@@ -124,6 +124,8 @@ When asked to post to any social media platform, use the Chrome browser tool to 
 | Purpose | File |
 |---------|------|
 | Security patrols and audits | skills/ciso-security-skill.md |
+| X/Twitter posting and daily briefing | skills/twitter-posting/SKILL.md |
+| Gumroad product publishing | skills/gumroad-publishing/SKILL.md |
 
 ## Tech Stack
 

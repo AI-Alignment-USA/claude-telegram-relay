@@ -138,7 +138,8 @@ const WORKER_DEFS: { id: string; name: string; desc: string; pm2Name: string; mo
   { id: "wellness-checkin", name: "Wellness Check-in", desc: "Midweek wellness pulse", pm2Name: "wellness-checkin", model: "sonnet", cron: "0 20 * * 3" },
   { id: "household-reminders", name: "Household Reminders", desc: "Daily household task reminders", pm2Name: "household-reminders", model: "haiku", cron: "0 8 * * *" },
   { id: "security-audit", name: "Security Audit", desc: "Weekly codebase security scan", pm2Name: "claude-security-audit", model: "sonnet", cron: "0 20 * * 0" },
-  { id: "twitter-drafts", name: "Twitter Drafts", desc: "Daily tweet draft generation", pm2Name: "twitter-drafts", model: "sonnet", cron: "0 5 * * *" },
+  { id: "twitter-drafts", name: "Twitter Drafts", desc: "Daily X post options with Hook Point framework", pm2Name: "twitter-drafts", model: "sonnet", cron: "0 5 * * *" },
+  { id: "twitter-nudge", name: "Twitter Nudge", desc: "9 AM follow-up if daily X drafts unanswered", pm2Name: "twitter-nudge", model: "none", cron: "0 9 * * *" },
   { id: "memory-flush", name: "Memory Flush", desc: "Nightly knowledge extraction", pm2Name: "memory-flush", model: "haiku", cron: "0 23 * * *" },
 ];
 
