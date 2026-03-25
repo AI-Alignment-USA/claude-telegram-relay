@@ -221,7 +221,12 @@ async function main() {
     console.log("Building weekly deep dive...");
     await weeklyDeepDive();
   } else {
-    guardTiming("newsroom-daily", { earliest: "4:45", latest: "5:30" });
+    const isAfternoon = process.argv[3] === "afternoon";
+    if (isAfternoon) {
+      guardTiming("newsroom-daily-pm", { earliest: "16:45", latest: "17:15" });
+    } else {
+      guardTiming("newsroom-daily", { earliest: "4:45", latest: "5:30" });
+    }
     console.log("Building daily digest...");
     await dailyDigest();
   }

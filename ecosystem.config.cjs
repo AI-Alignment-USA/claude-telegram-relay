@@ -139,6 +139,17 @@ module.exports = {
       windowsHide: true,
     },
     {
+      name: "newsroom-afternoon-digest",
+      script: "newsroom-afternoon.cjs",
+      cwd: __dirname,
+      out_file: "logs/newsroom-afternoon-digest.log",
+      error_file: "logs/newsroom-afternoon-digest.error.log",
+      autorestart: false,
+      cron_restart: "0 17 * * *",
+      watch: false,
+      windowsHide: true,
+    },
+    {
       name: "newsroom-weekly-dive",
       script: "newsroom-weekly.cjs",
       cwd: __dirname,

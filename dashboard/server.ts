@@ -128,6 +128,7 @@ const WORKER_DEFS: { id: string; name: string; desc: string; pm2Name: string; mo
   { id: "ciso-weekly", name: "CISO Weekly", desc: "Weekly security posture report", pm2Name: "ciso-weekly", model: "sonnet", cron: "0 5 * * 1" },
   { id: "newsroom-collect", name: "Newsroom Collect", desc: "AI news collection from RSS feeds", pm2Name: "newsroom-collect", model: "haiku", cron: "0 7-21/2 * * *" },
   { id: "newsroom-daily", name: "Newsroom Daily", desc: "Daily AI news digest", pm2Name: "newsroom-daily-digest", model: "sonnet", cron: "0 5 * * *" },
+  { id: "newsroom-afternoon", name: "Newsroom Afternoon", desc: "Afternoon AI news digest", pm2Name: "newsroom-afternoon-digest", model: "sonnet", cron: "0 17 * * *" },
   { id: "newsroom-weekly", name: "Newsroom Weekly", desc: "Weekly deep dive analysis", pm2Name: "newsroom-weekly-dive", model: "sonnet", cron: "0 9 * * 6" },
   { id: "cfo-daily", name: "CFO Daily", desc: "Daily sales and revenue report", pm2Name: "cfo-daily-report", model: "sonnet", cron: "0 5 * * *" },
   { id: "cfo-weekly", name: "CFO Weekly", desc: "Weekly financial summary", pm2Name: "cfo-weekly-report", model: "sonnet", cron: "0 19 * * 0" },
