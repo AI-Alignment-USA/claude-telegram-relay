@@ -283,19 +283,5 @@ module.exports = {
       windowsHide: true,
     },
 
-    // ============================================================
-    // MEMORY
-    // ============================================================
-    {
-      name: "memory-flush",
-      script: "memory-flush.cjs",
-      cwd: __dirname,
-      out_file: "logs/memory-flush.log",
-      error_file: "logs/memory-flush.error.log",
-      autorestart: false,
-      cron_restart: "0 23 * * *",
-      watch: false,
-      windowsHide: true,
-    },
   ],
 };
