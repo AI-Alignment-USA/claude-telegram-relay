@@ -5,6 +5,17 @@ module.exports = {
     // ALWAYS-ON
     // ============================================================
     {
+      name: "telegram-relay",
+      script: "telegram-relay.cjs",
+      cwd: __dirname,
+      out_file: "logs/telegram-relay.log",
+      error_file: "logs/telegram-relay.error.log",
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 3000,
+      windowsHide: true,
+    },
+    {
       name: "command-center",
       script: "dashboard.cjs",
       cwd: __dirname,
