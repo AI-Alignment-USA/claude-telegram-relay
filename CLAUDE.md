@@ -119,6 +119,8 @@ Memory is semantic, not chronological. Update existing entries rather than creat
 
 When asked to post to any social media platform, use the Chrome browser tool to navigate directly to the platform URL listed above. Crevita is logged into all accounts in Chrome. No APIs needed for social posting. When posting, never use em dashes.
 
+After posting a tweet from the daily drafts, update `data/twitter-draft-status.json` to `"responded": true, "status": "approved"` so the twitter-nudge PM2 worker doesn't send a redundant reminder.
+
 ## Skills
 
 | Purpose | File |
